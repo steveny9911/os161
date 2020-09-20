@@ -95,6 +95,7 @@ userland program userland/lib/libc/arch/mips/syscalls-mips.S calls syscall on li
 ----- R 5.7 -----
 - If we ever want to change the kernel configuration (DUMBVM/DUMBVM-OPT/GENERIC/GENERIC-OPT)
 - If we ever edited the configuration file for device drivers or changing options
+- If a new source file is modified/add/removed to the kernel
 
 
 ----- Q 5.8 ----- Under what circumstances should you run bmake depend in kern/compile/DUMBVM?
@@ -111,4 +112,58 @@ userland program userland/lib/libc/arch/mips/syscalls-mips.S calls syscall on li
 
 ----- Q 5.10 ----- When you booted your kernel, you found that there were several commands that you could issue to experiment with it. Explain exactly where and what you would have to do to add a command that printed out, "Hello world!"
 ----- R 5.10 -----
+- These commands are located in src/kern/main/menu.c
+- Starting from line 527, commands are listed in the variable "cmdtable"
+- To add a new command "helloworld", we need to create a function first:
 
+static int cmd_helloworld(int n, char **a) {
+  (void)n;
+  (void)a;
+
+  kprint("Hello world!\n");
+
+  return 0;
+}
+
+- Then we can add this to cmdtable variable:
+
+{"helloworld", cmd_helloworld}
+
+- To let use know that this command exist, we can added to "opsmenu" variable on line 434
+
+"[helloworld]   Print \"Hello world!\""
+
+- Run "bmake" and "bmake install" in src/kern/compile/DUMBVM
+- Run "sys161 kernel" in root/ to use the command
+
+
+----- Q 5.11 ----- userland/bin/ -- all the utilities that are typically found in /bin, e.g., cat, cp, ls, etc. The things in bin are considered "fundamental" utilities that the system needs to run.
+Why do we need to include these in your OS/161 distribution? Why can't you just use the standard utilities that are present on the machine on which you're working?
+----- R 5.11 -----
+- We are running os161 inside our simulator sys161
+- Since our OS runs using MIPS instructions instead of the more common x86 instructions, the programs might not work for os161
+
+
+----- Q 5.12 ----- When a user program exits, what is done with the program's return value?
+----- R 5.12 -----
+- Located in userland/lib/crt0/mips/crt0.S
+  - Startup code that gets called before main()
+  - And when main() returns
+- Return value of main() is saved to register v0
+- It is moved to s0 (callee-save) in case exit syscall returns 
+- It is also saved to a0 as the argument for exit syscall - as the exit status code 
+
+
+----- Q 5.13 ----- Imagine that you wanted to add a new system call. List all the places that you would need to modify/add code. Then review your answers to questions 7-9 and note which of those actions you need to take in order to test the new system call.
+----- R 5.13 -----
+- First need a system call number added to kern/include/kern/syscall.h
+  - This constant is used in kern/arch/mips/syscall/syscall.c
+- Create a function prototypes in kern/include/syscall.h
+- Write the actual function implementation somewhere
+  - Preferably saved in kern/syscall/ directory as suggested
+- In syscall function in kern/arch/mips/syscall/syscall.c add a new switch-case for the new system call constant
+  - Call the previous created function here
+
+- Run ./config DUMBVM in src/kern/conf when new source file is added to the kernel
+- Run "bmake depend", "bmake", "bmake" install in src/kern/compile/DUMBVM (or whatever configuration) 
+- Run the kernel from root/
