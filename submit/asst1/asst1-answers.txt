@@ -1,0 +1,83 @@
+========== Step 4 ==========
+----- 4.1 -----
+$ sys161
+sys161: System/161 release 2.0.3, compiled Sep  4 2020 11:32:51
+sys161: Usage: sys161 [sys161 options] kernel [kernel args...]
+sys161:    sys161 options:
+sys161:      -c config      Use alternate config file
+sys161:      -D count       Set disk I/O doom counter
+sys161:      -f file        (trace161 only)
+sys161:      -P             (trace161 only)
+sys161:      -p port        Listen for gdb over TCP on specified port
+sys161:      -s             Pass signal-generating characters through
+sys161:      -t[flags]      (trace161 only)
+sys161:      -w             Wait for debugger before starting
+sys161:      -X             Don't wait for debugger; exit instead
+sys161:      -Z seconds     Set watchdog timer to specified time
+
+----- 4.2 -----
+$ git log
+commit 87625ed72687ddf70e96507e23e1c4ff0a166a1a (HEAD -> master, tag: asst1-start, origin/master)
+Author: steveny9911 <stevenywy@gmail.com>
+Date:   Sat Sep 12 13:22:03 2020 -0700
+
+ignore defs.mk
+
+commit a593d4b74bd4dc2a2db597e93445c8bcc56b6797
+Author: steveny9911 <stevenywy@gmail.com>
+Date:   Fri Sep 4 11:52:52 2020 -0700
+
+gitignore
+
+commit 5d9a2fe48ff96bb80c8ec248b06ab30a4bd14847
+Author: steveny9911 <stevenywy@gmail.com>
+Date:   Fri Sep 4 11:41:15 2020 -0700
+
+Initial commit of os161 for CPEN331
+
+----- 4.3 -----
+$ git tag
+asst1-start
+
+========== Step 5 ========== (Questions & Responses)
+----- Q 5.1 ----- In the book chapters and in class you were introduced to the mechanisms used to transfer control between user processes and the operating system. Tell us where we can find the first line of OS/161 code that is executed when a trap occurs. Then tell us where control gets transferred to from that point. What about an interrupt? How does that differ?
+----- R 5.1 ----- 
+- When an exception / trap occurs, control is transferred to mips_utlb_handler (line 68) or mips_general_handler (line 86) in the file src/kern/arch/mips/locore/exception-mips1.S depending on whehter is is a UTLB exception or a general exception (though here they all both handled by common_exception (line 104))
+- Following common_exception, trapframe will be created for saving registers
+- Then, mips_trap will be called with argument of pointer to the trapframe located in src/kern/arch/mips/locore/trap.c
+  - Inside mips_trap, depending on the kind of exception, each will be delegated
+  - Interrupt is delegated differently through the interrupt dispathcer in src/kern/arch/sys161/dev/lamebus_machdep.c mainbus_interrupt function
+  - Syscall will be delegated to syscall function in src/kern/arch/mips/syscall/syscall.c
+    - Syscall will be further delegated depending on the call number variable stored in trapframe v0
+  - Further delegated for TLB, kernel fault, and other exceptions
+- Interrupt here is considered to be the same, as it is simply a spacial case of trap; it is differently delegated inside mips_trap
+
+
+----- Q 5.2 ----- Making a system call, such as write, ultimately leads to a trap. Find the code in OS/161 that invokes system calls from user programs and causes traps. In which file and on which lines did you find this code?
+----- R 5.2 -----
+userland program userland/lib/libc/arch/mips/syscalls-mips.S calls syscall on line 84
+
+
+----- Q 5.3 ----- Why do you suppose there are libc functions in the "common" part of the source tree (common/libc) as well as in userland/lib/libc?
+----- R 5.3 -----
+- These two locations contain files (and functions) that are the same and different (or additional)
+- Both the user program and the kernel also use these basic functions
+
+
+----- Q 5.4 ----- Name two things that configure configures. What might invalidate that configuration and make you need/want to rerun it?
+----- R 5.4 -----
+- Things that configure script configures:
+  - Target hardware platform (PLATFORM line 20)
+  - Target machine type (MACHINE line 21)
+  - Optimization and debug flag (DEBUG line 24)
+  - OS root directory (OSTREE line 30) we ran this during setup and install
+- We would re-run this script when we need to:
+  - Build and port to a different hardware and machine
+  - Want to set different debug or optimization flag
+  - Set the root directory to a different location (maybe not in os161 directory)
+
+
+----- Q 5.5 ----- What are some of the details which would make a function "machine dependent"? Why might it be important to maintain this separation, instead of just putting all of the code in one function?
+----- R 5.5 -----
+
+
