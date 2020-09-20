@@ -79,5 +79,36 @@ userland program userland/lib/libc/arch/mips/syscalls-mips.S calls syscall on li
 
 ----- Q 5.5 ----- What are some of the details which would make a function "machine dependent"? Why might it be important to maintain this separation, instead of just putting all of the code in one function?
 ----- R 5.5 -----
+- Files inside src/kern/arch often complain about compiler. We are ultimately running on the sys161 simulator, so functions need to accommodate for register differences
+- Hardware interrupt, for example, will need to be machine dependent since different hardware might have different number of registers, CPU, bus, or memories such that we need to place exception handlers or bus driver at different addresses
+- It is important to maintain separation so that we could keep code maintainable and keep abstraction, such as changing kernel without introducing bugs or issues into other programs. This would create an abstraction layer so machine-dependent code and machine-independent code are connected only by interfaces. We could simply write a new hardware interrupt function for the new hardware and keep the same interface, so programs do not have to worry about adapting to the new hardware.
 
+
+----- Q 5.6 ----- How large is a trapframe? Why?
+----- R 5.6 -----
+- Mentioned in exception-mips1.S (line 133) we need to allocate stack space for 37 words to hold the trap frame
+- In trapframe.h (src/kern/arch/mips/include/trapframe.h) there are 37 registers the trapframe needs to store, with each size of unsigned 32 bit integer
+- So 37 * 32 => 1184 bits (148 bytes) in total
+
+
+----- Q 5.7 ----- Under what circumstances should you re-run the kern/conf/config script?
+----- R 5.7 -----
+- If we ever want to change the kernel configuration (DUMBVM/DUMBVM-OPT/GENERIC/GENERIC-OPT)
+- If we ever edited the configuration file for device drivers or changing options
+
+
+----- Q 5.8 ----- Under what circumstances should you run bmake depend in kern/compile/DUMBVM?
+----- R 5.8 -----
+- For building the kernel the first time
+- For building the kernel when any include files are changed/added/removed
+
+
+----- Q 5.9 ----- Under what circumstances should you run bmake or bmake install in kern/compile/DUMBVM?
+----- R 5.9 -----
+- For building and installing the kernel if any kernel code is changed/added/removed
+- Usually running these should be fine since we are not constantly changing dependencies
+
+
+----- Q 5.10 ----- When you booted your kernel, you found that there were several commands that you could issue to experiment with it. Explain exactly where and what you would have to do to add a command that printed out, "Hello world!"
+----- R 5.10 -----
 
