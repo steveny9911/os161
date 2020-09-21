@@ -2,3 +2,4 @@
 /kern/compile
 defs.mk
 .vscode/
+.idea/

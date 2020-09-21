@@ -167,3 +167,106 @@ Why do we need to include these in your OS/161 distribution? Why can't you just 
 - Run ./config DUMBVM in src/kern/conf when new source file is added to the kernel
 - Run "bmake depend", "bmake", "bmake" install in src/kern/compile/DUMBVM (or whatever configuration) 
 - Run the kernel from root/
+
+
+========== Step 7 ========== (Questions & Responses)
+----- Q 7.14 ----- What is the name of the very first function that executes when OS161 starts up?
+----- R 7.14 -----
+The first function ran is:
+__start at start.S (line 54)
+
+
+----- Q 7.15 ----- What is the very first assembly instruction that executes? 
+----- R 7.15 -----
+The first assembly ran is:
+addiu sp, sp, -24
+
+----- Q 7.16 ----- Set the breakpoints in the kernel function that shows the menu and in the kernel main function. Now tell GDB to display all the breakpoints that were set and copy the output to your submit file.
+(gdb) break menu
+(gdb) break kmain
+(gdb) info breakpoints
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   0x80014a50 in menu at ../../main/menu.c:711
+2       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:21
+
+
+----- Q 7.17 ----- Briefly describe what happens between the beginning of the execution and the invocation of the kernel main function.
+- Everything happens in start.S in (kern/arch/sys161/main/start.S)
+- Stack frame is already initialized
+- Boot stack set up for the first processor
+- Also set up virtual addressing
+- Exception handler, TLB cache, instruction cache, status register
+
+
+----- Q 7.18 ----- What is the assembly language instruction that calls the kernel main function?
+----- R 7.18 -----
+jal kmain
+
+(gdb) p kmain
+$2 = {void (char *)} 0x800139d0 <kmain>
+
+
+----- Q 7.19 ----- Step through the boot() code to find out what functions are called during early initialization. Paste the gdb output that shows you what these functions are.
+----- R 7.19 -----
+ |108             /* Early initialization. */                                                                      |
+>|109             ram_bootstrap();                                                                                 |
+ |110             proc_bootstrap();                                                                                |
+ |111             thread_bootstrap();                                                                              |
+ |112             hardclock_bootstrap();                                                                           |
+ |113             vfs_bootstrap();                                                                                 |
+ |114             kheap_nextgeneration()                                                                           |
+
+Using
+(gdb) layout
+Or, use
+(gdb) list
+
+
+----- Q 7.20 ----- Set a breakpoint in thread_bootstrap(). Once you hit that breakpoint, at the very first line of that function, attempt to print the contents of the *bootcpu variable. Copy the output into the submit file. 
+----- R 7.20 -----
+There is nothing here!
+
+(gdb) print *bootcpu
+Cannot access memory at address 0x8000
+
+Seems like there is nothing at this address:
+(gdb) print bootcpu
+$3 = (struct cpu *) 0x8000
+
+
+----- Q 7.21 ----- Now, step through that function until after the line that says 'bootcpu = cpu_create(0)'. Now print the content of *bootcpu and paste the output.
+----- R 7.21 -----
+Now there is something here about the cpu!
+
+(gdb) print *bootcpu
+p *bootcpu
+$1 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {tl_head = {
+      tln_prev = 0x0, tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10, tln_next = 0x0,
+      tln_self = 0x0}, tl_count = 0}, c_hardclocks = 0, c_spinlocks = 0, c_isidle = false, c_runqueue = {tl_head = {
+      tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0,
+      tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {splk_lock = 0, splk_holder = 0x0}, c_ipi_pending = 0,
+  c_shootdown = {{ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0,
+    splk_holder = 0x0}
+
+(gdb) print bootcpu
+$5 = (struct cpu *) 0x8003af0
+
+
+----- Q 7.22 ----- Print the allcpus array before the boot() function is executed. Paste the output.
+----- R 7.22 -----
+(gdb) cpuarray allcpus
+0 cpu
+
+
+----- Q 7.23 ----- Print again the same array after the boot() function is executed. Paste the output.
+----- R 7.23 -----
+(gdb) cpuarray allcpus
+1 cpus
+cpu 0:
+$1 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {tl_head = {
+      tln_prev = 0x0, tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10, tln_next = 0x0,
+      tln_self = 0x0}, tl_count = 0}, c_hardclocks = 1, c_spinlocks = 0, c_isidle = false, c_runqueue = {tl_head = {
+      tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0,
+      tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {splk_lock = 0, splk_holder = 0x0}, c_ipi_pending = 0,
+  c_shootdown = {{ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0,
+    splk_holder = 0x0}
