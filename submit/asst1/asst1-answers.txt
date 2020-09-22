@@ -187,7 +187,7 @@ addiu sp, sp, -24
 (gdb) info breakpoints
 Num     Type           Disp Enb Address    What
 1       breakpoint     keep y   0x80014a50 in menu at ../../main/menu.c:711
-2       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:21
+2       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:211
 
 
 ----- Q 7.17 ----- Briefly describe what happens between the beginning of the execution and the invocation of the kernel main function.
@@ -270,3 +270,4 @@ $1 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x
       tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {splk_lock = 0, splk_holder = 0x0}, c_ipi_pending = 0,
   c_shootdown = {{ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0,
     splk_holder = 0x0}
+
