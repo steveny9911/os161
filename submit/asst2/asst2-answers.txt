@@ -1,0 +1,105 @@
+----- Q1 -----
+What happens to a thread when it exits (i.e., calls thread_exit())? What about when it sleeps?
+----- R1 -----
+thread_exit() in thread.c line 777
+- Find the current process and remove the thread from the array of all threads
+- Check to make sure the magic numbers we placed on the stack don't cause an assertion ("stack guard band")
+- So that we are not overflowed
+- Disable interrupts 
+- Switch the thread stead to zombie (exit but not yet deleted)
+- Put it on a list of zombie threads and process to pick up another thread from the queue
+- Zombie threads are cleaned up / destroyed after another thread is set running --- call exorcise 👻
+
+wchan_sleep(struct wchan *wc, struct spinlock *lk)
+- Make sure don't sleep on an interrupt handler
+- Check spinlock of the lock - hold such lock
+- Put the current thread to S_SLEEP state
+  - Add thread to wait channel's queue
+  - Pick up another thread
+- Yield the cpu to another process, and go to sleep, on the specified wait channel WC
+
+
+----- Q2 -----
+What function(s) handle(s) a context switch?
+----- R2 -----
+thread_switch function is the high-level context switch
+It will call switchframe_switch at assembly level to finish the register save
+
+
+----- Q3 -----
+What does it mean for a thread to be in each of the possible thread states?
+----- R3 -----
+- S_RUN --- thread is running
+- S_READ --- thread is ready to run but not running (queued)
+- S_SLEEP --- sleeping thread is not running nor ready
+- S_ZOMBIE --- exited thread that are yet destroyed
+
+
+----- Q4 -----
+What does it mean to turn interrupts off? How is this accomplished? Why is it important to turn off interrupts in the thread subsystem code?
+----- R4 -----
+- In this context, no context switch can happen, no preemption can occur, no more time-sharing
+- No other thread can take the cpu from the current thread
+- Current thread could never yield and blocks
+- Turning off interrupts so that thread can perform operations without getting taken away in-execution --- we don't want to get switched from a context switch while saving registers
+- But we need to turn interrupts back in order to let other thread to run
+- Interrupt off is accomplished by calling splhigh() --- setting priority level high
+- Interrupt on is calling with spl0()
+- These two functions are same as setting splx() since they return a constant
+
+
+----- Q5 -----
+What happens when a thread wakes up another thread? How does a sleeping thread get to run again?
+----- R5 -----
+- The thread will call wchan_wakeone() which gets that thread from the array
+- Then puts that thread onto thread_make_runnable which puts it on the queue 
+- That thread is put onto the cpu's run queue scheduled to run by some interrupt
+
+
+----- Q6 -----
+What function(s) choose(s) the next thread to run?
+----- R6 -----
+- Scheduler is responsible for picking the next thread to run
+  - schedule() runs in a round-robin fashion
+- thread_switch() could also choose the next thread to run from the array 
+- thread_consider_migration() could move thread across to another cpu if one cpu is less busy
+
+
+----- Q7 -----
+How does it (do they) pick the next thread?
+----- R7 -----
+- schedule() runs in a round-robin fashion
+- thread_switch() runs the next one (head) on the cpu's run queue (array)
+  - thread_make_runnable() could be placing thread on the tail
+
+
+----- Q8 -----
+What role does the hardware timer play in scheduling? What hardware independent function is called on a timer interrupt?
+----- R8 -----
+- Hardware clock controls preemption
+- hardclock() is called by the interrupt handler by the hardware clock
+  - migrate threads every 16 clock counts
+  - re-schedule threads every 4 clock counts
+  - yields current thread every call on hardclock() --- forcing a context switch
+
+
+----- Q9 -----
+Describe how wchan_sleep() and wchan_wakeone() are used to implement semaphores.
+----- R9 -----
+- In P (*acquire)
+  - If the count is greater than 0, we decrement the value
+  - Else wait until the count is greater than 0, then decrement it
+  - While we use spin lock to check the count, we do not want to kept on spinning and waiting
+  - So we go to sleep while to allow other threads to run
+- In V (*release)
+  - Increment the count
+  - Inside the spin lock, we increment
+  - And wake up on the semaphore's wait channel so that it could be scheduled to run
+
+
+----- Q10 -----
+How does the implementation of wchan ensure that a thread never misses a wakeup signal: that another thread cannot attempt to awaken the first thread just as it is preparing to sleep, but before it is actually placed into the sleep queue?
+----- R10 -----
+- We keep the process locked using spin lock and pass that same spin lock throughout wchan_sleep and thread_switch
+- When waking one or all, we make sure we keep the same lock
+
