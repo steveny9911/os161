@@ -199,7 +199,8 @@ lock_destroy(struct lock *lock)
            - struct wchan *lk_wchan;
            - struct spinlock lk_spinlock;
         */
-        lock->lk_owner = NULL; // when the lock is destroyed, no thread should be holding it
+        lock->lk_owner = NULL;                  // when the lock is destroyed, no thread should be holding it
+
         spinlock_cleanup(&lock->lk_spinlock);
         wchan_destroy(lock->lk_wchan);
 
@@ -217,7 +218,8 @@ lock_acquire(struct lock *lock)
 {
         KASSERT(lock != NULL);                          // make sure lock is not null
         KASSERT(!lock_do_i_hold(lock));                 // and current thread does not already hold the lock --- prevent deadlock
-        KASSERT(curthread->t_in_interrupt == false);    // do not block interrupt handler
+
+        KASSERT(!curthread->t_in_interrupt);            // do not block interrupt handler --- t_in_interrupt should be false
 
         spinlock_acquire(&lock->lk_spinlock);           // lock for wait channel / test-and-set
 
@@ -226,7 +228,7 @@ lock_acquire(struct lock *lock)
                 wchan_sleep(lock->lk_wchan, &lock->lk_spinlock);
         }
 
-        KASSERT(lock->held = false);
+        KASSERT(!lock->held);                           // should be able to acquire the lock now --- held should be false
 
         lock->held = true;
         lock->lk_owner = curthread;
@@ -242,13 +244,14 @@ lock_acquire(struct lock *lock)
 void
 lock_release(struct lock *lock)
 {
-        KASSERT((lock != NULL));                           // make sure lock is not null
+        KASSERT(lock != NULL);                             // make sure lock is not null
         KASSERT(lock_do_i_hold(lock));                     // and current thread does actually own the lock
 
         spinlock_acquire(&lock->lk_spinlock);              // lock for the wait channel
 
         lock->held = false;
         lock->lk_owner = NULL;
+
         wchan_wakeone(lock->lk_wchan, &lock->lk_spinlock); // wake up one thread so they may continue
 
         spinlock_release(&lock->lk_spinlock);
@@ -262,7 +265,6 @@ lock_release(struct lock *lock)
 bool
 lock_do_i_hold(struct lock *lock)
 {
-        // Write this
         KASSERT(lock != NULL);
         return lock->lk_owner == curthread;
 }
