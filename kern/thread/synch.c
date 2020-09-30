@@ -138,6 +138,11 @@ V(struct semaphore *sem)
 //
 // Lock.
 
+/**
+ * Create a lock / mutex
+ * @param name name of the lock
+ * @return lock; else NULL if failed
+ */
 struct lock *
 lock_create(const char *name)
 {
@@ -154,46 +159,112 @@ lock_create(const char *name)
                 return NULL;
         }
 
-        // add stuff here as needed
+        /*
+          need to initialize
+           - volatile bool held;
+           - struct thread *lk_owner;
+           - struct wchan *lk_wchan;
+           - struct spinlock lk_spinlock;
+        */
+        
+        // (thanks semaphore 💙)
+        // create our wait channel
+        lock->lk_wchan = wchan_create(lock->lk_name);
+        if (lock->lk_wchan == NULL) {
+                kfree(lock->lk_name);
+                kfree(lock);
+                return NULL;
+        }
+
+        spinlock_init(&lock->lk_spinlock); // create our lock
+        lock->held = false;                // set to false since no one yet to own it
+        lock->lk_owner = NULL;             // when the lock is created, no thread should be holding it
 
         return lock;
 }
 
+/**
+ * Destory / free the lock object
+ * @param lock
+ */
 void
 lock_destroy(struct lock *lock)
 {
         KASSERT(lock != NULL);
 
-        // add stuff here as needed
+        /*
+          need to free
+           - volatile bool held;
+           - struct thread *lk_owner;
+           - struct wchan *lk_wchan;
+           - struct spinlock lk_spinlock;
+        */
+        lock->lk_owner = NULL; // when the lock is destroyed, no thread should be holding it
+        spinlock_cleanup(&lock->lk_spinlock);
+        wchan_destroy(lock->lk_wchan);
 
         kfree(lock->lk_name);
         kfree(lock);
 }
 
+/**
+ * Acquire the lock
+ * Only one thread can hold the lock at the same time
+ * @param lock
+ */
 void
 lock_acquire(struct lock *lock)
 {
-        // Write this
+        KASSERT(lock != NULL);                          // make sure lock is not null
+        KASSERT(!lock_do_i_hold(lock));                 // and current thread does not already hold the lock --- prevent deadlock
+        KASSERT(curthread->t_in_interrupt == false);    // do not block interrupt handler
 
-        (void)lock;  // suppress warning until code gets written
+        spinlock_acquire(&lock->lk_spinlock);           // lock for wait channel / test-and-set
+
+        // block / sleep until the lock is available!
+        while (lock->held) {
+                wchan_sleep(lock->lk_wchan, &lock->lk_spinlock);
+        }
+
+        KASSERT(lock->held = false);
+
+        lock->held = true;
+        lock->lk_owner = curthread;
+
+        spinlock_release(&lock->lk_spinlock);
 }
 
+/**
+ * Release the lock
+ * Only the thread holding the lock may do
+ * @param lock
+ */
 void
 lock_release(struct lock *lock)
 {
-        // Write this
+        KASSERT((lock != NULL));                           // make sure lock is not null
+        KASSERT(lock_do_i_hold(lock));                     // and current thread does actually own the lock
 
-        (void)lock;  // suppress warning until code gets written
+        spinlock_acquire(&lock->lk_spinlock);              // lock for the wait channel
+
+        lock->held = false;
+        lock->lk_owner = NULL;
+        wchan_wakeone(lock->lk_wchan, &lock->lk_spinlock); // wake up one thread so they may continue
+
+        spinlock_release(&lock->lk_spinlock);
 }
 
+/**
+ * Do I, the current thread, hold the lock?
+ * @return true if the current thread holds the lock; false otherwise
+ * Nothing about whether the lk_held should be true or false
+ */
 bool
 lock_do_i_hold(struct lock *lock)
 {
         // Write this
-
-        (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+        KASSERT(lock != NULL);
+        return lock->lk_owner == curthread;
 }
 
 ////////////////////////////////////////////////////////////
