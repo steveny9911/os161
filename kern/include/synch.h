@@ -75,7 +75,6 @@ void V(struct semaphore *);
 struct lock {
         char *lk_name;
 
-        // added
         volatile bool held;
         struct thread *lk_owner;
         struct wchan *lk_wchan;
@@ -118,8 +117,9 @@ bool lock_do_i_hold(struct lock *);
 
 struct cv {
         char *cv_name;
-        // add what you need here
-        // (don't forget to mark things volatile as needed)
+
+        struct wchan *cv_wchan;
+        struct spinlock cv_spinlock;
 };
 
 struct cv *cv_create(const char *name);
@@ -138,6 +138,7 @@ void cv_destroy(struct cv *);
  *
  * These operations must be atomic. You get to write them.
  */
+
 void cv_wait(struct cv *cv, struct lock *lock);
 void cv_signal(struct cv *cv, struct lock *lock);
 void cv_broadcast(struct cv *cv, struct lock *lock);
