@@ -41,6 +41,7 @@
 #include <sfs.h>
 #include <syscall.h>
 #include <test.h>
+#include "opt-synchprobs.h"
 #include "opt-sfs.h"
 #include "opt-net.h"
 
@@ -114,6 +115,11 @@ common_prog(int nargs, char **args)
 {
 	struct proc *proc;
 	int result;
+
+#if OPT_SYNCHPROBS
+	kprintf("Warning: this probably won't work with a "
+		"synchronization-problems kernel.\n");
+#endif
 
 	/* Create a process for the new program to run in. */
 	proc = proc_create_runprogram(args[0] /* name */);
@@ -436,14 +442,13 @@ static const char *opsmenu[] = {
 	"[p]       Other program             ",
 	"[mount]   Mount a filesystem        ",
 	"[unmount] Unmount a filesystem      ",
-	"[bootfs]  Set \"boot\" filesystem   ",
+	"[bootfs]  Set \"boot\" filesystem     ",
 	"[pf]      Print a file              ",
 	"[cd]      Change directory          ",
 	"[pwd]     Print current directory   ",
 	"[sync]    Sync filesystems          ",
 	"[panic]   Intentional panic         ",
 	"[q]       Quit and shut down        ",
-	"[helloworld] Print \"Hello world!\" ",
 	NULL
 };
 
@@ -503,6 +508,9 @@ cmd_testmenu(int n, char **a)
 static const char *mainmenu[] = {
 	"[?o] Operations menu                ",
 	"[?t] Tests menu                     ",
+#if OPT_SYNCHPROBS
+	"[sp1] Air Balloon                   ",
+#endif
 	"[kh] Kernel heap stats              ",
 	"[khgen] Next kernel heap generation ",
 	"[khdump] Dump kernel heap           ",
@@ -521,18 +529,6 @@ cmd_mainmenu(int n, char **a)
 	return 0;
 }
 
-static
-int
-cmd_helloworld(int n, char **a)
-{
-	(void)n;
-	(void)a;
-
-	kprintf("Hello world!\n");
-
-	return 0;
-}
-
 ////////////////////////////////////////
 //
 // Command table.
@@ -547,7 +543,6 @@ static struct {
 	{ "help",	cmd_mainmenu },
 	{ "?o",		cmd_opsmenu },
 	{ "?t",		cmd_testmenu },
-	{ "helloworld", cmd_helloworld },
 
 	/* operations */
 	{ "s",		cmd_shell },
@@ -563,6 +558,11 @@ static struct {
 	{ "q",		cmd_quit },
 	{ "exit",	cmd_quit },
 	{ "halt",	cmd_quit },
+
+#if OPT_SYNCHPROBS
+	/* in-kernel synchronization problem(s) */
+	{ "sp1",	airballoon },
+#endif
 
 	/* stats */
 	{ "kh",         cmd_kheapstats },
