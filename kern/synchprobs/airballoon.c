@@ -26,7 +26,7 @@ volatile int stakes[NROPES];
 // ===== Synchronization primitives =====
 struct semaphore *sem;
 struct lock *lk;
-struct cv *cv_flowerkiller;
+struct cv *cv_flowerkiller, *cv_dandelion, *cv_marigold, *cv_balloon;
 
 volatile int flowerkiller_count = N_LORD_FLOWERKILLER;
 
@@ -68,7 +68,10 @@ dandelion(void *p, unsigned long arg)
   kprintf("Dandelion thread done\n");
   V(sem);
 
-  // hooks done!
+  lock_acquire(lk);
+    cv_signal(cv_dandelion, lk);
+  lock_release(lk);
+
   return;
 }
 
@@ -104,7 +107,9 @@ marigold(void *p, unsigned long arg)
   kprintf("Marigold thread done\n");
   V(sem);
 
-  // stake done
+  lock_acquire(lk);
+    cv_signal(cv_marigold, lk);
+  lock_release(lk);
 
   return;
 }
@@ -176,6 +181,10 @@ balloon(void *p, unsigned long arg)
   kprintf("Balloon freed and Prince Dandelion escapes!\n");
   V(sem);
 
+  lock_acquire(lk);
+    cv_signal(cv_balloon, lk);
+  lock_release(lk);
+
   kprintf("Balloon thread done\n");
   return;
 }
@@ -209,6 +218,13 @@ airballoon(int nargs, char **args)
 
   cv_flowerkiller = cv_create("cv_flowerkiller");
   if (cv_flowerkiller == NULL) panic("cv_create failed: %s\n", strerror(err));
+  cv_dandelion = cv_create("cv_dandelion");
+  if (cv_dandelion == NULL) panic("cv_create failed: %s\n", strerror(err));
+  cv_marigold = cv_create("cv_marigold");
+  if (cv_marigold == NULL) panic("cv_create failed: %s\n", strerror(err));
+  cv_balloon = cv_create("cv_balloon");
+  if (cv_balloon == NULL) panic("cv_create failed: %s\n", strerror(err));
+
 
   // ===== forking =====
   err = thread_fork("Marigold Thread", NULL, marigold, NULL, 0);
@@ -225,10 +241,13 @@ airballoon(int nargs, char **args)
   err = thread_fork("Air Balloon", NULL, balloon, NULL, 0);
   if(err) goto panic;
 
-  // done?
+  // ===== done? =====
   lock_acquire(lk);
   while (ropes_left > 0) {
     cv_wait(cv_flowerkiller, lk);
+    cv_wait(cv_dandelion, lk);
+    cv_wait(cv_marigold, lk);
+    cv_wait(cv_balloon, lk);
   }
   lock_release(lk);
 
