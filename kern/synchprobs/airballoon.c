@@ -256,11 +256,11 @@ airballoon(int nargs, char **args)
       lock_acquire(lk);
     }
     
-  //   // cv_wait(cv_flowerkiller, lk);
-  //   kprintf("%d", ropes_left);
-  //   cv_wait(cv_dandelion, lk);
-  //   cv_wait(cv_marigold, lk);
-  //   cv_wait(cv_balloon, lk);
+    // // cv_wait(cv_flowerkiller, lk);
+    // kprintf("%d", ropes_left);
+    // cv_wait(cv_dandelion, lk);
+    // cv_wait(cv_marigold, lk);
+    // cv_wait(cv_balloon, lk);
   lock_release(lk);
 
   goto done;
