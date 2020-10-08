@@ -30,6 +30,10 @@ struct cv *cv_flowerkiller, *cv_dandelion, *cv_marigold, *cv_balloon;
 
 volatile int flowerkiller_count = N_LORD_FLOWERKILLER;
 
+volatile bool done_dandelion = false;
+volatile bool done_marigold = false;
+volatile bool done_balloon = false;
+
 /*
  * Describe your design and any invariants or locking protocols
  * that must be maintained. Explain the exit conditions. How
@@ -69,7 +73,8 @@ dandelion(void *p, unsigned long arg)
   V(sem);
 
   lock_acquire(lk);
-    cv_signal(cv_dandelion, lk);
+    done_dandelion = true;
+    // cv_signal(cv_dandelion, lk);
   lock_release(lk);
 
   return;
@@ -108,58 +113,59 @@ marigold(void *p, unsigned long arg)
   V(sem);
 
   lock_acquire(lk);
-    cv_signal(cv_marigold, lk);
+    done_marigold = true;
+    // cv_signal(cv_marigold, lk);
   lock_release(lk);
 
   return;
 }
 
-static
-void
-flowerkiller(void *p, unsigned long arg)
-{
-  (void)p;
-  (void)arg;
+// static
+// void
+// flowerkiller(void *p, unsigned long arg)
+// {
+//   (void)p;
+//   (void)arg;
 
-  kprintf("Lord FlowerKiller thread starting\n");
+//   kprintf("Lord FlowerKiller thread starting\n");
 
-  /* Implement this function */
-  int index = random() % NROPES;
-  P(sem);
-  while (ropes_left > 0) {
-    int stake1 = index;
-    while (ropes[stakes[index]] == false || stakes[index] == -1) {
-      stake1 = random() % NROPES;
-    }
+//   /* Implement this function */
+//   int index = random() % NROPES;
+//   P(sem);
+//   while (ropes_left > 0) {
+//     int stake1 = index;
+//     while (ropes[stakes[index]] == false || stakes[index] == -1) {
+//       stake1 = random() % NROPES;
+//     }
 
-    int stake2 = index;
-    while (ropes[stakes[index]] == false || stakes[index] == -1 || stake1 == stake2) {
-      stake2 = random() % NROPES;
-    }
+//     int stake2 = index;
+//     while (ropes[stakes[index]] == false || stakes[index] == -1 || stake1 == stake2) {
+//       stake2 = random() % NROPES;
+//     }
 
-    int rope1 = stakes[stake1];
-    int rope2 = stakes[stake2];
-    stakes[stake1] = rope2;
-    stakes[stake2] = rope1;
-    kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", rope1, stake1, stake2);
-    kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", rope2, stake2, stake1);
+//     int rope1 = stakes[stake1];
+//     int rope2 = stakes[stake2];
+//     stakes[stake1] = rope2;
+//     stakes[stake2] = rope1;
+//     kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", rope1, stake1, stake2);
+//     kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", rope2, stake2, stake1);
 
-    V(sem);
-    thread_yield();
-    P(sem);
-  }
+//     V(sem);
+//     thread_yield();
+//     P(sem);
+//   }
 
-  kprintf("Lord FlowerKiller thread done\n");
-  V(sem);
+//   kprintf("Lord FlowerKiller thread done\n");
+//   V(sem);
 
-  lock_acquire(lk);
-    flowerkiller_count--;
-    if (flowerkiller_count == 0) {
-      cv_signal(cv_flowerkiller, lk);
-    }
-  lock_release(lk);
-  return;
-}
+//   lock_acquire(lk);
+//     flowerkiller_count--;
+//     if (flowerkiller_count == 0) {
+//       cv_signal(cv_flowerkiller, lk);
+//     }
+//   lock_release(lk);
+//   return;
+// }
 
 static
 void
@@ -182,7 +188,8 @@ balloon(void *p, unsigned long arg)
   V(sem);
 
   lock_acquire(lk);
-    cv_signal(cv_balloon, lk);
+    done_balloon = true;
+    // cv_signal(cv_balloon, lk);
   lock_release(lk);
 
   kprintf("Balloon thread done\n");
@@ -195,7 +202,7 @@ int
 airballoon(int nargs, char **args)
 {
 
-  int err = 0, i;
+  int err = 0;
 
   (void)nargs;
   (void)args;
@@ -233,22 +240,27 @@ airballoon(int nargs, char **args)
   err = thread_fork("Dandelion Thread", NULL, dandelion, NULL, 0);
   if(err) goto panic;
 
-  for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
-    err = thread_fork("Lord FlowerKiller Thread", NULL, flowerkiller, NULL, 0);
-    if(err) goto panic;
-  }
+  // for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
+  //   err = thread_fork("Lord FlowerKiller Thread", NULL, flowerkiller, NULL, 0);
+  //   if(err) goto panic;
+  // }
 
   err = thread_fork("Air Balloon", NULL, balloon, NULL, 0);
   if(err) goto panic;
 
   // ===== done? =====
   lock_acquire(lk);
-  while (ropes_left > 0) {
-    cv_wait(cv_flowerkiller, lk);
-    cv_wait(cv_dandelion, lk);
-    cv_wait(cv_marigold, lk);
-    cv_wait(cv_balloon, lk);
-  }
+    while (!done_dandelion || !done_marigold || !done_balloon) {
+      lock_release(lk);
+      thread_yield();
+      lock_acquire(lk);
+    }
+    
+  //   // cv_wait(cv_flowerkiller, lk);
+  //   kprintf("%d", ropes_left);
+  //   cv_wait(cv_dandelion, lk);
+  //   cv_wait(cv_marigold, lk);
+  //   cv_wait(cv_balloon, lk);
   lock_release(lk);
 
   goto done;
