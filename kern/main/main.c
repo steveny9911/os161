@@ -98,6 +98,7 @@ boot(void)
 
 	kprintf("\n");
 	kprintf("OS/161 base system version %s\n", BASE_VERSION);
+	kprintf("(with locks&CVs solution)\n");
 	kprintf("%s", harvard_copyright);
 	kprintf("\n");
 
