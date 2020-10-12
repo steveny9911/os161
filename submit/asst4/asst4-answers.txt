@@ -1,0 +1,24 @@
+1. The ELF magic numbers are offsets for the 1-byte fields within e_ident.
+They are EI_MAG0, EI_MAG1, EI_MAG2A and EI_MAG3.
+
+2. The difference between UIO_USERISPACE and UIO_USERSPACE is that 
+UIO_USERISPACE contains user process code and UIO_USERSPACE contains user
+process data. One should use UIO_SYSSPACE instead when source or destination
+of data transfer is in the kernel space.
+
+3. The struct uio is allocated on the stack in load_segment because the 
+adress space of memory is stored in uio_space in the struct uio.
+
+4. It is important to call vfs_close() because it calls VOP_DECREF, which
+decrements the reference count of the vnode.
+
+5. The function forces the processor to switch into usermode is mips_usermode.
+This function is not machine dependent.
+
+6. Copyin and Copuout are defined in copyinout.c. Memmove is defined in 
+memmove.c. Copyin and copyout can't be implemented as simply as memmove 
+because copyin and copyout ensure the copied user pointers are valid.
+
+7. The purpose of userptr_t is to point to a one-byte struct.
+
+8. The numerical value of the exception code for a MIPS system call is 8.
