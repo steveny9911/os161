@@ -1,0 +1,48 @@
+1. The ELF magic numbers are offsets for the 1-byte fields within e_ident.
+They are EI_MAG0, EI_MAG1, EI_MAG2A and EI_MAG3.
+
+2. The difference between UIO_USERISPACE and UIO_USERSPACE is that 
+UIO_USERISPACE contains user process code and UIO_USERSPACE contains user
+process data. One should use UIO_SYSSPACE instead when source or destination
+of data transfer is in the kernel space.
+
+3. The struct uio is allocated on the stack in load_segment because the 
+adress space of memory is stored in uio_space in the struct uio.
+
+4. It is important to call vfs_close() because it calls VOP_DECREF, which
+decrements the reference count of the vnode.
+
+5. The function forces the processor to switch into usermode is mips_usermode.
+This function is not machine dependent.
+
+6. Copyin and Copyout are defined in copyinout.c. Memmove is defined in 
+memmove.c. Copyin and copyout can't be implemented as simply as memmove 
+because copyin and copyout ensure the copied user pointers are valid.
+
+7. The purpose of userptr_t is to point to a one-byte struct.
+
+8. The numerical value of the exception code for a MIPS system call is 8.
+
+9. The number of bytes in an instruction in MIPS is 4 bytes.
+
+10. I "probably want to change" the implementation of kill_curthread() 
+because I don't want kernel to panic when user-level code hits a fatal fault.
+
+11. To implement a system call that took more than 4 arguments, user-level
+stack would be required.
+
+12. The purpose of the SYSCALL macro is to load the syscall number into v0
+and jump to the shared syscall code.
+
+13. The MIPS instruction that actually triggers a system call is syscall.
+
+14. The first argument can be found in a0, the second argument can be found
+in a2/a3 and the third argument can be found in the user-level stack. The
+64-bit offset is returned in v0 and v1.
+
+15. To open a file, vfs_open is called. To read a file, O_RDONLY is called;
+to write a file, O_WRONLY is called. To represent an open file, vnode is 
+used.
+
+16. The purpose of VOP_INCREF and VOP_DECREF is to increment and decrement
+refcount.
