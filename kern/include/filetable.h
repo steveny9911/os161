@@ -2,13 +2,14 @@
 #define _FILETABLE_H_
 
 #include <limits.h>
+#include <openfile.h>
 
 struct filetable
 {
   struct openfile *openfiles[OPEN_MAX];
 };
 
-struct filetable filetable_create(void);
-void filetable_destory(struct filetable *ft);
+struct filetable *filetable_init(void);
+void filetable_cleanup(struct filetable *);
 
 #endif /* _FILETABLE_H_ */

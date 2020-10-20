@@ -1,8 +1,16 @@
 #include <type.h>
 #include <syscall.h>
 
-int sys_open(const char *filename, int flags)
+int
+sys_open(const char *filename, int flags, mode_t mode)
 {
+  // validate flag
+
+  // copy filename into kernel
+
+  // openfile_open
+
+  // put onto filetable
 }
 
 ssize_t
