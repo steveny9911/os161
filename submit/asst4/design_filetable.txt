@@ -1,0 +1,47 @@
+=== general setup ===
+kern/include/
+> file_syscall.h (all the functions)
+> filetable.h (file table struct)
+
+kern/syscall/
+> file_syscalls.c
+
+kern/arch/mips/syscall/
+> syscall.c (add switch cases)
+
+kern/conf/
+> conf.kern (add file_syscall.c)
+
+-------------------------------------------------------------
+
+Need two structures: file tables and open files
+
+=== file table ===
+- file table is a list of "open file"
+- index with non-negative integers as file descriptors
+- each entry contains a pointer to an entry in a table that the kernel maintains for all open files
+- functions for system calls
+
+functions:
+- struct filetable filetable_create(void)
+- void filetable_destory(struct filetable)
+- need more for sure...
+
+=== open file ===
+- similar to vnode
+- a new "open file" object for every time you open a file
+- when opening the same file or an already-opened file (with dup2 or fork) ---> need to use and share the same object
+- status (read, write, append, etc.) ---> "fcntl.h"
+  - (probably don't need a lock for this)
+- current file offset ---> type off_t
+  - a lock for offset
+- a pointer to the entry for this file in the so-called ---> vnode
+- reference counter
+  - a locker for reference counter
+
+functions:
+- openfile_open()
+- openfile_incref()
+- openfile_decref()
+
+
