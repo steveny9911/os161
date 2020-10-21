@@ -9,6 +9,7 @@
 #include <current.h>
 #include <synch.c>
 #include <uio.h>
+#include <seek.h>
 
 int sys_open(const char filename, int flags, mode_t mode, int *retval)
 {
@@ -17,7 +18,8 @@ int sys_open(const char filename, int flags, mode_t mode, int *retval)
     // validate flag (https://lwn.net/Articles/588444/)
     if (flags & ~(O_RDONLY | O_WRONLY | O_RDWR |
                   O_CREAT | O_EXCL | O_TRUNC |
-                  O_APPEND)) {
+                  O_APPEND))
+    {
         return EINVAL;
     }
 
@@ -26,20 +28,23 @@ int sys_open(const char filename, int flags, mode_t mode, int *retval)
     size_t len = strlen(filename);
     size_t *actual;
     int result = copyinstr(filename, kname, len, actual);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
     // openfile_open
     struct openfile *file;
     result = openfile_open(kname, flags, mode, &file); // return onto file; result is 0 or error code
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
     // put onto filetable
     result = filetable_add(curproc->p_ft, file, retval);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -52,7 +57,8 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
     // get openfile with filetable_get --- using fd as index
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -65,14 +71,15 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
     // similar to load_elf
     // call uio_kinit
     struct iovec iov;
-    struct uio uu; 
+    struct uio uu;
     uio_kinit(&iov, &uu, buf, buflen, offset, UIO_READ);
 
     // VOP_READ
     struct vnode *v = file->file_vnode;
     result = VOP_READ(v, &uu);
-    if (result) {
-      return result;
+    if (result)
+    {
+        return result;
     }
 
     // done reading
@@ -95,7 +102,8 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
     // get openfile with filetable_get --- using fd as index
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -108,14 +116,15 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
     // similar to load_elf
     // call uio_kinit
     struct iovec iov;
-    struct uio uu; 
+    struct uio uu;
     uio_kinit(&iov, &uu, buf, nbytes, offset, UIO_WRITE);
 
     // VOP_READ
     struct vnode *v = file->file_vnode;
     result = VOP_WRITE(v, &uu);
-    if (result) {
-      return result;
+    if (result)
+    {
+        return result;
     }
 
     // done reading
@@ -137,12 +146,14 @@ int sys_close(int fd)
     struct openfile *file;
 
     int result = filetable_get(ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
     result = filetable_remove(ft, fd);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -161,9 +172,7 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
     // SEEK_CUR, the new position is the current position plus pos.
     // SEEK_END, the new position is the position of end-of-file plus pos.
     // anything else, lseek fails.
-    // 
-
-
+    //
 
     // get openfile
     // acquire openfile's offset lock
