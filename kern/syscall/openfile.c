@@ -8,9 +8,13 @@
 #include <spinlock.h>
 #include <vfs.h>
 
+/**
+ * static private function used by openfile_open()
+ */
 struct openfile *
 openfile_init(struct vnode *vn, int status)
 {
+    // malloc for openfile object
     struct openfile *file;
 
     file = kmalloc(sizeof(struct openfile));
@@ -19,6 +23,7 @@ openfile_init(struct vnode *vn, int status)
         return NULL;
     }
 
+    // set object fields
     file->file_vnode = vn;
 
     file->status = status;
@@ -35,6 +40,10 @@ openfile_init(struct vnode *vn, int status)
     return file;
 }
 
+/**
+ * Destroy an openfile object
+ * @param file openfile object
+ */
 void openfile_cleanup(struct openfile *file)
 {
     KASSERT(file->file_refcount == 1);
@@ -49,6 +58,10 @@ void openfile_cleanup(struct openfile *file)
     vnode_cleanup(file->file_vnode);
 }
 
+/**
+ * Increment reference counter of an openfile object
+ * @param file openfile object
+ */
 void openfile_incref(struct openfile *file)
 {
     KASSET(file != NULL);
@@ -58,6 +71,11 @@ void openfile_incref(struct openfile *file)
     spinlock_release(&file->file_countlock);
 }
 
+/**
+ * Decrement reference counter of an openfile object
+ * Destory the openfile object upon none reference
+ * @param file openfile object
+ */
 void openfile_decref(struct openfile *file)
 {
     bool destroy;
@@ -91,18 +109,27 @@ void openfile_decref(struct openfile *file)
  * - create an openfile object, then
  * - put vnode onto that openfile object
  * - return the openfile (for sys_open)
+ * @param path      file path / file name
+ * @param openflags file permission flags logically OR-ed together
+ * @param mode      mode to be opened at
+ * @param ret       actual openfile object to be returned 
+ * @return          0 success, else error code
  */
 int openfile_open(char *path, int openflags, mode_t mode, struct openfile **ret)
 {
+    // get the vnode of the file we want to read
+    // actual return is "vn" --- double pointer
     struct vnode *vn;
-    int result = vfs_open(path, openflags, mode, &vn); // actual return is "vn" --- double pointer
+    int result = vfs_open(path, openflags, mode, &vn);
     if (result)
     {
-        return result; // something bad happened
+        return result;
     }
 
+    // check status code (access permission) is valid
     int status = openflags & O_ACCMODE; // from vfspath.c --- line 52 "how" --- O_RDONLY, O_WRONLY, O_RDWR
 
+    // create the actual openfile object --- put onto ret
     struct openfile *file;
     file = openfile_init(vn, status);
     if (file == NULL)

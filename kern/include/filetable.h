@@ -11,7 +11,7 @@ struct filetable
 
 struct filetable *filetable_init(void);
 void filetable_cleanup(struct filetable *);
-int filetable_add(struct filetable *, struct openfile *);
+int filetable_add(struct filetable *, struct openfile *, int *);
 int filetable_get(struct filetabel *, int, struct opentile **);
 int filetable_remove(struct filetable *, int);
 
