@@ -7,9 +7,10 @@
 #include <kern/limits.h>
 #include <proc.h>
 #include <current.h>
-#include <synch.c>
+#include <synch.h>
 #include <uio.h>
 #include <seek.h>
+#include <stat.h>
 
 int sys_open(const char filename, int flags, mode_t mode, int *retval)
 {
@@ -165,25 +166,59 @@ int sys_close(int fd)
 
 off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
 {
-    // http://ece.ubc.ca/~os161/man/syscall/lseek.html
-    //     If whence is
-
-    // SEEK_SET, the new position is pos.
-    // SEEK_CUR, the new position is the current position plus pos.
-    // SEEK_END, the new position is the position of end-of-file plus pos.
-    // anything else, lseek fails.
-    //
+    struct openfile *file;
+    off_t new_offset;
 
     // get openfile
+    int result = filetable_get(curproc->p_ft, fd, file);
+    if (result)
+    {
+        return result;
+    }
+
     // acquire openfile's offset lock
+    lock_acquire(file->file_offsetlock);
+    new_offset = file->file_offset;
+
     // switch-case for "whence"
-    //  - SEEK_SET --- just set it
-    //  - SEEK_CUR --- just add onto offset
-    //  - SEEK_END --- where to find the end of file position? (look into vnode? vfs?)
-    //  - default --- release lock, return error
+    switch (whence)
+    {
+    case SEEK_SET: //  - SEEK_SET --- just set it
+        new_offset = pos;
+        break;
+    case SEEK_CUR: //  - SEEK_CUR --- just add onto offset
+        new_offset = pos + new_offset;
+        break;
+    case SEEK_END: //  - SEEK_END --- where to find the end of file position? (look into vnode? vfs?) --- https://piazza.com/class/keabkwwe5wwpc?cid=735
+        struct stat *file_info;
+        result = VOP_STAT(file->file_vnode, file_info);
+        if (result)
+        {
+            lock_release(file->file_offsetlock);
+            return result;
+        }
+        new_offset = pos + file_info->st_size;
+    default: //  - default --- release lock, return error
+        lock_release(file->file_offsetlock);
+        return EINVAL;
+    }
+
+    // offset should not be negative
+    if (new_offset < 0)
+    {
+        lock_release(file->file_offsetlock);
+        return EINVAL;
+    }
+
     // set new offset
+    file->file_offset = new_offset;
+    *retval = new_offset;
+
     // release lock
+    lock_release(file->file_offsetlock);
+
     // done --- set retval to be new offset
+    return 0;
 }
 
 int sys_chdir(const char *pathname)
