@@ -14,7 +14,8 @@ openfile_init(struct vnode *vn, int status)
     struct openfile *file;
 
     file = kmalloc(sizeof(struct openfile));
-    if (file == NULL) {
+    if (file == NULL)
+    {
         return NULL;
     }
 
@@ -25,7 +26,8 @@ openfile_init(struct vnode *vn, int status)
     file->file_refcount = 1;
 
     file->file_offsetlock = lock_create("file");
-    if (file->file_offsetlock == NULL) {
+    if (file->file_offsetlock == NULL)
+    {
         return NULL;
     }
     spinlock_init(&file->file_countlock);
@@ -33,14 +35,13 @@ openfile_init(struct vnode *vn, int status)
     return file;
 }
 
-void 
-openfile_cleanup(struct openfile * file)
+void openfile_cleanup(struct openfile *file)
 {
     KASSERT(file->file_refcount == 1);
 
     spinlock_cleanup(file->file_countlock);
     lock_destroy(file->file_offsetlock);
-    
+
     file->file_refcount = 0;
     file->file_offset = NULL;
     file->status = NULL;
@@ -48,8 +49,7 @@ openfile_cleanup(struct openfile * file)
     vnode_cleanup(file->file_vnode);
 }
 
-void 
-openfile_incref(struct openfile *file)
+void openfile_incref(struct openfile *file)
 {
     KASSET(file != NULL);
 
@@ -58,8 +58,7 @@ openfile_incref(struct openfile *file)
     spinlock_release(&file->file_countlock);
 }
 
-void 
-openfile_decref(struct openfile *file)
+void openfile_decref(struct openfile *file)
 {
     bool destroy;
 
@@ -68,16 +67,19 @@ openfile_decref(struct openfile *file)
     spinlock_acquire(&file->file_countlock);
 
     KASSERT(file->file_refcount > 0);
-    if (file->file_refcount > 1) {
+    if (file->file_refcount > 1)
+    {
         file->file_refcount--;
         destroy = false;
     }
-    else {
+    else
+    {
         destroy = true;
     }
     spinlock_release(&file->file_refcount);
 
-    if (destroy) {
+    if (destroy)
+    {
         openfile_cleanup(file);
     }
 }
@@ -90,20 +92,21 @@ openfile_decref(struct openfile *file)
  * - put vnode onto that openfile object
  * - return the openfile (for sys_open)
  */
-int
-openfile_open(char *path, int openflags, mode_t mode, struct openfile **ret) 
+int openfile_open(char *path, int openflags, mode_t mode, struct openfile **ret)
 {
     struct vnode *vn;
     int result = vfs_open(path, openflags, mode, &vn); // actual return is "vn" --- double pointer
-    if (result) {
+    if (result)
+    {
         return result; // something bad happened
     }
-    
+
     int status = openflags & O_ACCMODE; // from vfspath.c --- line 52 "how" --- O_RDONLY, O_WRONLY, O_RDWR
-    
+
     struct openfile *file;
     file = openfile_init(vn, status);
-    if (file == NULL) {
+    if (file == NULL)
+    {
         vfs_close(vn);
         return 1; // should use some actual error code
     }
@@ -111,5 +114,3 @@ openfile_open(char *path, int openflags, mode_t mode, struct openfile **ret)
     *ret = file;
     return 0;
 }
-
-
