@@ -112,20 +112,4 @@ openfile_open(char *path, int openflags, mode_t mode, struct openfile **ret)
     return 0;
 }
 
-void 
-openfile_close(struct openfile *file)
-{
-    openfile_decref(file);
-}
 
-int 
-openfile_mkdir(char *path, mode_t mode)
-{
-    return vfs_mkdir(path, mode);
-}
-
-int 
-openfile_chdir(char *path)
-{
-    return vfs_chdir(path);
-}

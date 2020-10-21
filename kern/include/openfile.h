@@ -22,9 +22,5 @@ void openfile_incref(struct openfile *);
 void openfile_decref(struct openfile *);
 
 int openfile_open(char *path, int openflag, mode_t mode, struct openfile **ret); // create vnode, call vfs_open
-void openfile_close(struct openfile *file);
-int openfile_mkdir(char *path, mode_t mode);
-int openfile_chdir(char *path);
-int vfs_getcwd(struct uio *buf);
 
 #endif
