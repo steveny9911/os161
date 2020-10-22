@@ -1,4 +1,4 @@
-#include <type.h>
+#include <types.h>
 #include <lib.h>
 #include <kern/errno.h>
 #include <kern/fcntl.h>

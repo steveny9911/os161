@@ -1,7 +1,7 @@
-#include <unistd.h>
-#include <type.h>
+#include <kern/unistd.h>
+#include <types.h>
 #include <lib.h>
-#include <errno.h>
+#include <kern/errno.h>
 #include <syscall.h>
 #include <filetable.h>
 #include <openfile.h>
@@ -10,7 +10,7 @@
 #include <current.h>
 #include <synch.h>
 #include <uio.h>
-#include <seek.h>
+#include <kern/seek.h>
 #include <kern/stat.h>
 
 int sys_open(const char filename, int flags, mode_t mode, int *retval)
@@ -78,7 +78,8 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
     // VOP_READ to actually perform the read
     struct vnode *v = file->file_vnode;
     result = VOP_READ(v, &uu);
-    if (result) {
+    if (result)
+    {
         lock_release(file->file_offsetlock);
         return result;
     }
@@ -123,7 +124,8 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
     // VOP_WRITE
     struct vnode *v = file->file_vnode;
     result = VOP_WRITE(v, &uu);
-    if (result) {
+    if (result)
+    {
         lock_release(file->file_offsetlock);
         return result;
     }
@@ -171,7 +173,8 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
     // get openfile
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -195,7 +198,8 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
     case SEEK_END:
         struct stat file_info;
         result = emufs_stat(file->file_vnode, file_info);
-        if (result) {
+        if (result)
+        {
             lock_release(file->file_offsetlock);
             return result;
         }
@@ -206,9 +210,10 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
         lock_release(file->file_offsetlock);
         return EINVAL;
     }
-    
+
     // validate new offset
-    if (new_offset < 0) {
+    if (new_offset < 0)
+    {
         lock_release(file->file_offsetlock);
         return EINVAL;
     }
@@ -233,12 +238,14 @@ int sys_chdir(const char *pathname)
     size_t len = strlen(pathname);
     size_t *actual;
     int result = copyinstr(pathname, kname, len, actual);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
     result = vfs_chdir(kname);
-    if (result) {
+    if (result)
+    {
         return result;
     }
     return 0;
@@ -247,29 +254,33 @@ int sys_chdir(const char *pathname)
 int sys_dup2(int oldfd, int newfd)
 {
     // validate file handles
-    if (oldfd < 0 || newfd < 0) {
+    if (oldfd < 0 || newfd < 0)
+    {
         return EBADF;
     }
-    if (oldfd > __PID_MAX || newfd > __PID_MAX) {
+    if (oldfd > __PID_MAX || newfd > __PID_MAX)
+    {
         return EMFILE;
     }
 
     struct openfile *oldfile, *newfile;
     int result = filetable_get(curproc->p_ft, oldfd, &oldfile);
-    if (result) {
+    if (result)
+    {
         return result;
     }
     // If newfd names an already-open file, that file is closed.
     result = filetable_add(curproc->p_ft, newfd, &newfile);
-    if (!result) {
+    if (!result)
+    {
         result = filetable_remove(curproc->p_ft, newfd);
-        if (result) {
+        if (result)
+        {
             return result;
         }
     }
 
     // let two handles refer to the same "open" of the file
-    
 }
 
 int sys___getcwd(char *buf, size_t buflen)
@@ -280,7 +291,8 @@ int sys___getcwd(char *buf, size_t buflen)
     uio_kinit(&iov, &uu, buf, buflen, 0, UIO_READ);
 
     int result = vfs_getcwd(&uu);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 

@@ -1,7 +1,7 @@
 #ifndef _OPENFILE_H_
 #define _OPENFILE_H_
 
-#include <type.h>
+#include <types.h>
 #include <vnode.h>
 
 struct openfile
