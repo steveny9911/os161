@@ -141,8 +141,6 @@ int sys_write(int fd, void *buf, size_t nbytes, int *retval)
     file->file_offset = uu.uio_offset;
     lock_release(file->file_offsetlock);
 
-    //?In most cases, one should loop to make sure that all output has actually been written.
-
     // retvel --- count of bytes wrote
     *retval = new_offset - offset;
     return 0;
@@ -290,15 +288,17 @@ int sys_dup2(int oldfd, int newfd, int *retval)
             return result;
         }
 
-        openfile_decref(newfile);
-
         result = filetable_remove(curproc->p_ft, newfd);
         if (result) {
             return result;
         }
+        openfile_decref(newfile);
+        *retval = newfd;
+        return 0;
     }
 
-    // let two handles refer to the same "open" of the file
+    // clone oldfd onto newfd
+    curproc->p_ft->openfiles[newfd] = oldfile;
 
     *retval = newfd;
     return 0;

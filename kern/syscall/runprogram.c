@@ -44,6 +44,9 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include <kern/fcntl.h>
+#include <filetable.h>
+#include <openfile.h>
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -64,6 +67,42 @@ runprogram(char *progname)
 	if (result) {
 		return result;
 	}
+
+	// setting console
+	
+	struct filetable *ft = curproc->p_ft;
+
+	// By default, fd 0, 1 and 2 are used for stdin, stdout, stderr 
+	// create new files
+	struct vnode *vn0 = NULL, *vn1 = NULL, *vn2 = NULL;
+	struct openfile *file0 = openfile_init(vn0, O_RDONLY);
+	struct openfile *file1 = openfile_init(vn1, O_WRONLY);
+	struct openfile *file2 = openfile_init(vn2, O_WRONLY);
+
+	// set file paths
+	char *con_in = kstrdup("con:");
+	char *con_out = kstrdup("con:");
+	char *con_err = kstrdup("con:");
+
+	// open the files 
+	//?return error
+	result = vfs_open(con_in, O_RDONLY, 0, &file0->file_vnode);
+	if (result) {
+			vfs_close(file0->file_vnode);
+	}
+	result = vfs_open(con_out, O_WRONLY, 0, &file1->file_vnode);
+	if (result) {
+			vfs_close(file1->file_vnode);
+	}
+	result = vfs_open(con_err, O_WRONLY, 0, &file2->file_vnode);
+	if (result) {
+			vfs_close(file2->file_vnode);
+	}
+
+	// make fd 0, 1 and 2 point to the files
+	ft->openfiles[0] = file0;
+	ft->openfiles[1] = file1;
+	ft->openfiles[2] = file2;
 
 	/* We should be a new process. */
 	KASSERT(proc_getas() == NULL);
