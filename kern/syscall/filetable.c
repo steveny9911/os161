@@ -31,20 +31,19 @@ filetable_cleanup(struct filetable *ft)
  * Actual return - file descriptor index
  */
 int
-filetable_add(struct filetable *ft, struct openfile *file, int *index)
+filetable_add(struct filetable *ft, int index, struct openfile **ret)
 {
     KASSERT(ft != NULL);
     KASSERT(file != NULL);
 
-    for (int i = 0; i < OPEN_MAX; i++) {
-        if (ft->openfiles[i] == NULL) {
-            ft->openfiles[i] = file;
-            *index = i;
-            return 0;
-        }
-    }
+    // for (int i = 0; i < OPEN_MAX; i++) {
+    //     if (ft->openfiles[i] == NULL) {
+    //         ft->openfiles[i] = file;
+    //         return 0;
+    //     }
+    // }
 
-    return EMFILE;
+    // return EMFILE;
 }
 
 int
