@@ -8,20 +8,20 @@
 #include <kern/limits.h>
 #include <proc.h>
 #include <current.h>
-#include <synch.c>
+#include <synch.h>
 #include <uio.h>
 #include <seek.h>
 #include <kern/stat.h>
-#include <emu.c>
 
 int sys_open(const char filename, int flags, mode_t mode, int *retval)
 {
     KASSERT(filename != NULL);
 
-    // validate flag (https://lwn.net/Articles/588444/)
+    // validate flags (https://lwn.net/Articles/588444/)
     if (flags & ~(O_RDONLY | O_WRONLY | O_RDWR |
                   O_CREAT | O_EXCL | O_TRUNC |
-                  O_APPEND)) {
+                  O_APPEND))
+    {
         return EINVAL;
     }
 
@@ -30,20 +30,23 @@ int sys_open(const char filename, int flags, mode_t mode, int *retval)
     size_t len = strlen(filename);
     size_t *actual;
     int result = copyinstr(filename, kname, len, actual);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
-    // openfile_open
+    // openfile_open to get the actual file
     struct openfile *file;
     result = openfile_open(kname, flags, mode, &file); // return onto file; result is 0 or error code
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
-    // put onto filetable
+    // put openfile onto the process's filetable
     result = filetable_add(curproc->p_ft, file, retval);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -52,26 +55,27 @@ int sys_open(const char filename, int flags, mode_t mode, int *retval)
 
 int sys_read(int fd, void *buf, size_t buflen, int *retval)
 {
-    // get openfile with filetable_get --- using fd as index
+    // get openfile with filetable_get --- using fd as filetable index
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
-    // get openfile offset
-    // get lock --- release lock after all read is done
+    // get openfile's offset
+    // acquire lock --- release lock after all read is done
     off_t offset;
     lock_acquire(file->file_offsetlock);
     offset = file->file_offset;
 
     // similar to load_elf
-    // call uio_kinit
+    // call uio_kinit for create user-io
     struct iovec iov;
-    struct uio uu; 
+    struct uio uu;
     uio_kinit(&iov, &uu, buf, buflen, offset, UIO_READ);
 
-    // VOP_READ
+    // VOP_READ to actually perform the read
     struct vnode *v = file->file_vnode;
     result = VOP_READ(v, &uu);
     if (result) {
@@ -99,7 +103,8 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
     // get openfile with filetable_get --- using fd as index
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
@@ -112,10 +117,10 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
     // similar to load_elf
     // call uio_kinit
     struct iovec iov;
-    struct uio uu; 
+    struct uio uu;
     uio_kinit(&iov, &uu, buf, nbytes, offset, UIO_WRITE);
 
-    // VOP_READ
+    // VOP_WRITE
     struct vnode *v = file->file_vnode;
     result = VOP_WRITE(v, &uu);
     if (result) {
@@ -123,13 +128,15 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
         return result;
     }
 
-    // done reading
-    // how much did we read? --- update file_offset and return
+    // done writing
+    // how much did we write? --- update file_offset and return
     off_t new_offset = uu->uio_offset;
     file->file_offset = uu->uio_offset;
     lock_release(file->file_offsetlock);
 
-    // retvel --- count of bytes read
+    //?In most cases, one should loop to make sure that all output has actually been written.
+
+    // retvel --- count of bytes wrote
     *retval = new_offset - offset;
     return 0;
 }
@@ -139,17 +146,21 @@ int sys_close(int fd)
     struct filetable *ft = curproc->p_ft;
     struct openfile *file;
 
+    // get the openfile from the filetable
     int result = filetable_get(ft, fd, &file);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
+    // remove the openfile from the filetable
     result = filetable_remove(ft, fd);
-    if (result) {
+    if (result)
+    {
         return result;
     }
 
-    // openfile close file decrement reference counter
+    // openfile close file by decrementing the reference counter
     openfile_decref(file);
 
     return 0;
@@ -182,13 +193,13 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
         break;
     // SEEK_END, the new position is the position of end-of-file plus pos.
     case SEEK_END:
-        struct stat stats;
-        result = emufs_stat(file->file_vnode, stats);
+        struct stat file_info;
+        result = emufs_stat(file->file_vnode, file_info);
         if (result) {
             lock_release(file->file_offsetlock);
             return result;
         }
-        new_offset = stats->st_size + pos;
+        new_offset = file_info->st_size + pos;
         break;
     // anything else, lseek fails.
     default:

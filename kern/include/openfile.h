@@ -7,7 +7,7 @@
 struct openfile
 {
   struct vnode *file_vnode;
-  int status; // O_RDONLY, O_WRONLY, O_RDWR
+  int status;
 
   struct lock *file_offsetlock;
   off_t file_offset;
@@ -20,7 +20,6 @@ struct openfile *openfile_init(struct vnode *, int);
 void openfile_cleanup(struct openfile *);
 void openfile_incref(struct openfile *);
 void openfile_decref(struct openfile *);
+int openfile_open(char *, int, mode_t, struct openfile **);
 
-int openfile_open(char *path, int openflag, mode_t mode, struct openfile **ret); // create vnode, call vfs_open
-
-#endif
+#endif /* _OPENFILE_H_ */
