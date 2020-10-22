@@ -15,6 +15,7 @@
 #include <kern/seek.h>
 #include <stat.h>
 #include <vfs.h>
+#include <lib.h>
 
 int sys_open(const char *filename, int flags, mode_t mode, int *retval)
 {
@@ -40,6 +41,7 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
         kfree(kname);
         return result;
     }
+    kprintf("copyinstr pass\n");
 
     // openfile_open to get the actual file
     struct openfile *file;
@@ -48,6 +50,7 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
         kfree(kname);
         return result;
     }
+    kprintf("openfile_open pass\n");
 
     // put openfile onto the process's filetable
     result = filetable_add(curproc->p_ft, file, retval);
@@ -55,6 +58,7 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
         kfree(kname);
         return result;
     }
+    kprintf("filetable_add pass\n");
 
     kfree(kname);
     return 0;

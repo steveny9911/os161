@@ -60,6 +60,8 @@ int filetable_add(struct filetable *ft, struct openfile *file, int *index)
         {
             ft->openfiles[i] = file;
             *index = i;
+
+            kprintf("filetable_add i: %d\n", i);
             return 0;
         }
     }
@@ -85,8 +87,9 @@ int filetable_get(struct filetable *ft, int index, struct openfile **ret)
     // get the open file at file descriptor index
     struct openfile *file;
     file = ft->openfiles[index];
-    if (file == NULL)
+    if (file == NULL) {
         return ENOENT;
+    }
 
     *ret = file;
     return 0;
@@ -100,6 +103,7 @@ int filetable_get(struct filetable *ft, int index, struct openfile **ret)
  */
 int filetable_remove(struct filetable *ft, int index)
 {
+    kprintf("filetable_remove index: %d\n", index);
     // make sure index is in range
     if (index < 0 || index > OPEN_MAX)
         return EBADF;
