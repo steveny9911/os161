@@ -48,12 +48,12 @@ void openfile_cleanup(struct openfile *file)
 {
     KASSERT(file->file_refcount == 1);
 
-    spinlock_cleanup(file->file_countlock);
+    spinlock_cleanup(&file->file_countlock);
     lock_destroy(file->file_offsetlock);
 
     file->file_refcount = 0;
-    file->file_offset = NULL;
-    file->status = NULL;
+    // file->file_offset = NULL;
+    // file->status = NULL;
 
     vnode_cleanup(file->file_vnode);
 }
@@ -64,7 +64,7 @@ void openfile_cleanup(struct openfile *file)
  */
 void openfile_incref(struct openfile *file)
 {
-    KASSET(file != NULL);
+    KASSERT(file != NULL);
 
     spinlock_acquire(&file->file_countlock);
     file->file_refcount++;
@@ -94,7 +94,7 @@ void openfile_decref(struct openfile *file)
     {
         destroy = true;
     }
-    spinlock_release(&file->file_refcount);
+    spinlock_release(&file->file_countlock);
 
     if (destroy)
     {

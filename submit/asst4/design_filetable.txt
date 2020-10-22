@@ -45,3 +45,18 @@ functions:
 - openfile_decref()
 
 
+-------------------------------------------------------------
+/src/kern/conf
+$ ./config DUMBVM
+
+/src/kern/compile/DUMBVM
+$ bmake depend
+$ bmake
+$ bmake install
+
+-------------------------------------------------------------
+
+/src/
+$ bmake
+$ bmake install
+

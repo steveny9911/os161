@@ -2,6 +2,8 @@
 #include <limits.h>
 #include <openfile.h>
 #include <kern/errno.h>
+#include <types.h>
+#include <lib.h>
 
 /**
  * Create a new filetable array (should be called by each process)
@@ -39,26 +41,28 @@ void filetable_cleanup(struct filetable *ft)
 }
 
 /**
- * Add an "openfile" onto the file table array
+ * Add an "openfile" onto the file table array (call by sys_open)
  * @param ft    current process's filetable
  * @param file  openfile object to be added
  * @param index filetable descriptor index that has this openfile object
  * @return      0 success, else error code
  */
-int
-filetable_add(struct filetable *ft, int index, struct openfile **ret)
+int filetable_add(struct filetable *ft, struct openfile *file, int *index)
 {
     KASSERT(ft != NULL);
     KASSERT(file != NULL);
 
-    // for (int i = 0; i < OPEN_MAX; i++) {
-    //     if (ft->openfiles[i] == NULL) {
-    //         ft->openfiles[i] = file;
-    //         return 0;
-    //     }
-    // }
+    for (int i = 0; i < OPEN_MAX; i++)
+    {
+        if (ft->openfiles[i] == NULL)
+        {
+            ft->openfiles[i] = file;
+            *index = i;
+            return 0;
+        }
+    }
 
-    // return EMFILE;
+    return EMFILE;
 }
 
 /**

@@ -57,13 +57,17 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
-int sys_open(const char *filename, int flags, mode_t moded, int *retval);
-ssize_t sys_read(int fd, void *buf, size_t bufle, int *retval);
-ssize_t sys_write(int fd, const void *buf, size_t nbytes, int *retval);
+
+int sys_open(const char *filename, int flags, mode_t mode, int *retval);
 int sys_close(int fd);
-off_t sys_lseek(int fd, off_t pos, int whence, int *retval);
+
+int sys_read(int fd, void *buf, size_t buflen, int *retval);
+int sys_write(int fd, void *buf, size_t nbytes, int *retval);
+
+int sys_lseek(int fd, off_t pos, int whence, int *retval);
+
 int sys_chdir(const char *pathname);
-int sys_dup2(int oldfd, int newfd);
+int sys_dup2(int oldfd, int newfd, int *retval);
 int sys___getcwd(char *buf, size_t buflen);
 
 #endif /* _SYSCALL_H_ */

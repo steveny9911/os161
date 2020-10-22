@@ -1,6 +1,8 @@
 #include <kern/unistd.h>
 #include <types.h>
 #include <lib.h>
+#include <kern/fcntl.h>
+#include <copyinout.h>
 #include <kern/errno.h>
 #include <syscall.h>
 #include <filetable.h>
@@ -11,9 +13,10 @@
 #include <synch.h>
 #include <uio.h>
 #include <kern/seek.h>
-#include <kern/stat.h>
+#include <stat.h>
+#include <vfs.h>
 
-int sys_open(const char filename, int flags, mode_t mode, int *retval)
+int sys_open(const char *filename, int flags, mode_t mode, int *retval)
 {
     KASSERT(filename != NULL);
 
@@ -26,30 +29,29 @@ int sys_open(const char filename, int flags, mode_t mode, int *retval)
     }
 
     // copy filename into kernel
-    char *kname;
-    size_t len = strlen(filename);
-    size_t *actual;
-    int result = copyinstr(filename, kname, len, actual);
-    if (result)
-    {
+    char *kname = kmalloc(NAME_MAX);
+    size_t len = (size_t)strlen(filename);
+    int result = copyinstr((const_userptr_t)filename, kname, len, NULL);
+    if (result) {
         return result;
     }
 
     // openfile_open to get the actual file
     struct openfile *file;
     result = openfile_open(kname, flags, mode, &file); // return onto file; result is 0 or error code
-    if (result)
-    {
+    if (result) {
+        kfree(kname);
         return result;
     }
 
     // put openfile onto the process's filetable
     result = filetable_add(curproc->p_ft, file, retval);
-    if (result)
-    {
+    if (result) {
+        kfree(kname);
         return result;
     }
 
+    kfree(kname);
     return 0;
 }
 
@@ -59,9 +61,7 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
     if (result)
-    {
         return result;
-    }
 
     // get openfile's offset
     // acquire lock --- release lock after all read is done
@@ -86,8 +86,8 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
 
     // done reading
     // how much did we read? --- update file_offset and return
-    off_t new_offset = uu->uio_offset;
-    file->file_offset = uu->uio_offset;
+    off_t new_offset = uu.uio_offset;
+    file->file_offset = uu.uio_offset;
     lock_release(file->file_offsetlock);
 
     // retvel --- count of bytes read
@@ -95,7 +95,7 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
     return 0;
 }
 
-int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
+int sys_write(int fd, void *buf, size_t nbytes, int *retval)
 {
     // same as sys_read
     // but UIO_WRITE and use nbytes
@@ -132,8 +132,8 @@ int sys_write(int fd, const void *buf, size_t nbytes, int *retval)
 
     // done writing
     // how much did we write? --- update file_offset and return
-    off_t new_offset = uu->uio_offset;
-    file->file_offset = uu->uio_offset;
+    off_t new_offset = uu.uio_offset;
+    file->file_offset = uu.uio_offset;
     lock_release(file->file_offsetlock);
 
     //?In most cases, one should loop to make sure that all output has actually been written.
@@ -168,7 +168,7 @@ int sys_close(int fd)
     return 0;
 }
 
-off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
+int sys_lseek(int fd, off_t pos, int whence, int *retval)
 {
     // get openfile
     struct openfile *file;
@@ -179,9 +179,11 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
     }
 
     // acquire openfile's offset lock
-    offset_t new_offset;
-    lock_acquire(file->file_offset_lock);
+    off_t new_offset;
+    lock_acquire(file->file_offsetlock);
     new_offset = file->file_offset;
+
+    struct stat file_info;
 
     // switch-case for "whence"
     switch (whence)
@@ -196,14 +198,13 @@ off_t sys_lseek(int fd, off_t pos, int whence, int *retval)
         break;
     // SEEK_END, the new position is the position of end-of-file plus pos.
     case SEEK_END:
-        struct stat file_info;
-        result = emufs_stat(file->file_vnode, file_info);
+        result = VOP_STAT(file->file_vnode, &file_info);
         if (result)
         {
             lock_release(file->file_offsetlock);
             return result;
         }
-        new_offset = file_info->st_size + pos;
+        new_offset = file_info.st_size + pos;
         break;
     // anything else, lseek fails.
     default:
@@ -234,53 +235,68 @@ int sys_chdir(const char *pathname)
     KASSERT(pathname != NULL);
 
     // copy pathname into kernel
-    char *kname;
-    size_t len = strlen(pathname);
-    size_t *actual;
-    int result = copyinstr(pathname, kname, len, actual);
+    char *kname = kmalloc(PATH_MAX);
+    size_t len = (size_t)strlen(pathname);
+    int result = copyinstr((const_userptr_t)pathname, kname, len, NULL);
     if (result)
     {
+        kfree(kname);
         return result;
     }
 
     result = vfs_chdir(kname);
     if (result)
     {
+        kfree(kname);
         return result;
     }
+
+    kfree(kname);
     return 0;
 }
 
-int sys_dup2(int oldfd, int newfd)
+int sys_dup2(int oldfd, int newfd, int *retval)
 {
     // validate file handles
-    if (oldfd < 0 || newfd < 0)
-    {
+    if (oldfd < 0 || newfd < 0) {
         return EBADF;
     }
-    if (oldfd > __PID_MAX || newfd > __PID_MAX)
-    {
+
+    if (oldfd > OPEN_MAX || newfd > OPEN_MAX) {
         return EMFILE;
+    }
+
+    // Using dup2 to clone a file handle onto itself has no effect.
+    if (oldfd == newfd) {
+        *retval = newfd;
+        return 0;
     }
 
     struct openfile *oldfile, *newfile;
     int result = filetable_get(curproc->p_ft, oldfd, &oldfile);
-    if (result)
-    {
+    if (result) {
         return result;
     }
+    
     // If newfd names an already-open file, that file is closed.
-    result = filetable_add(curproc->p_ft, newfd, &newfile);
-    if (!result)
-    {
+    if (curproc->p_ft->openfiles[newfd] != NULL) {
+        result = filetable_get(curproc->p_ft, newfd, &newfile);
+        if (result) {
+            return result;
+        }
+
+        openfile_decref(newfile);
+
         result = filetable_remove(curproc->p_ft, newfd);
-        if (result)
-        {
+        if (result) {
             return result;
         }
     }
 
     // let two handles refer to the same "open" of the file
+
+    *retval = newfd;
+    return 0;
 }
 
 int sys___getcwd(char *buf, size_t buflen)
@@ -296,5 +312,5 @@ int sys___getcwd(char *buf, size_t buflen)
         return result;
     }
 
-    return uu->uio_resid;
+    return (int)uu.uio_resid;
 }
