@@ -30,9 +30,14 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
 
     // copy filename into kernel
     char *kname = kmalloc(NAME_MAX);
-    size_t len = (size_t)strlen(filename);
-    int result = copyinstr((const_userptr_t)filename, kname, len, NULL);
+    if (kname == NULL) {
+        return ENOMEM;
+    }
+
+    // size_t len = (size_t)strlen(filename);
+    int result = copyinstr((const_userptr_t)filename, kname, NAME_MAX, NULL);
     if (result) {
+        kfree(kname);
         return result;
     }
 
