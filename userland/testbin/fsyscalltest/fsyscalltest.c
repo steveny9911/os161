@@ -359,6 +359,8 @@ dir_test()
 int
 main()
 {
+	printf("Starting fsyscalltest!\n");
+
 	test_openfile_limits();
 	printf("Passed Part 1 of fsyscalltest\n");
 
