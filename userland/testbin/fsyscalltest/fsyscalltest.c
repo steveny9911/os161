@@ -16,6 +16,70 @@
 #include <err.h>
 #include <limits.h>
 
+/* 
+ * This is essentially the same code as in filetest.c, except we don't
+ * expect any arguments, so the test can be executed before processes are
+ * fully implemented. Furthermore, we do not call remove, because emufs does not
+ * support it, and we would like to be able to run on emufs.
+ */
+static void
+simple_test()
+{
+  	static char writebuf[41] = 
+		"Twiddle dee dee, Twiddle dum dum.......\n";
+	static char readbuf[41];
+
+	const char *file;
+	int fd, rv;
+
+	file = "testfile";
+
+	printf("open 1\n");
+	fd = open(file, O_WRONLY|O_CREAT|O_TRUNC, 0664);
+	if (fd<0) {
+		err(1, "%s: open for write", file);
+	}
+
+	printf("write 1\n");
+	rv = write(fd, writebuf, 40);
+	if (rv<0) {
+		err(1, "%s: write", file);
+	}
+
+	printf("close 1\n");
+	rv = close(fd);
+	if (rv<0) {
+		err(1, "%s: close (1st time)", file);
+	}
+
+	printf("open 2\n");
+	fd = open(file, O_RDONLY);
+	if (fd<0) {
+		err(1, "%s: open for read", file);
+	}
+
+	printf("read 1\n");
+	rv = read(fd, readbuf, 40);
+	if (rv<0) {
+		err(1, "%s: read", file);
+	}
+
+	printf("close 2\n");
+	rv = close(fd);
+	if (rv<0) {
+		err(1, "%s: close (2nd time)", file);
+	}
+
+	printf("check null\n");
+	/* ensure null termination */
+	readbuf[40] = 0;
+
+	printf("check compare\n");
+	if (strcmp(readbuf, writebuf)) {
+		errx(1, "Buffer data mismatch!");
+	}
+}
+
 static int openFDs[OPEN_MAX-3 + 1];
 
 /*
@@ -34,7 +98,7 @@ test_openfile_limits()
 	 * because the first 3 file descriptors are occupied by stdin, 
 	 * stdout and stderr. 
 	 */
-	printf("STEP 1\n");
+	// printf("STEP 1\n");
 	for(i = 0; i < (OPEN_MAX-3); i++)
 	{
 		fd = open(file, O_RDWR|O_CREAT|O_TRUNC, 0664);
@@ -52,7 +116,7 @@ test_openfile_limits()
 		openFDs[i] = fd;
 	}
 
-	printf("STEP 2\n");
+	// printf("STEP 2\n");
 	/* This one should fail. */
 	fd = open(file, O_RDWR|O_CREAT|O_TRUNC, 0664);
 	if(fd > 0)
@@ -60,26 +124,26 @@ test_openfile_limits()
 		    "is the maximum allowed number of open files and the "
 		    "first three are reserved. \n",
 		    (i+1), OPEN_MAX);
-	printf("open succeed!\n");
+	// printf("open succeed!\n");
 
-	printf("STEP 3\n");
+	// printf("STEP 3\n");
 	/* Let's close one file and open another one, which should succeed. */
 	rv = close(openFDs[0]);
 	if (rv<0)
 		err(1, "%s: close for the 1st time", file);
-	printf("close succeed!\n");
+	// printf("close succeed!\n");
 	
 	fd = open(file, O_RDWR|O_CREAT|O_TRUNC, 0664);
 	if (fd<0)
 		err(1, "%s: re-open after closing", file);
-	printf("re-open succeed!\n");
+	// printf("re-open succeed!\n");
 
 	rv = close(fd);
 	if (rv<0)
 		err(1, "%s: close for the 2nd time", file);
-	printf("re-close succeed!\n");
+	// printf("re-close succeed!\n");
 
-	printf("STEP 4\n");
+	// printf("STEP 4\n");
 	/* Begin closing with index "1", because we already closed the one
 	 * at slot "0".
 	 */
@@ -99,11 +163,13 @@ main()
 {
 	printf("\n===Starting fsyscalltest!===\n");
 
+	printf("\n===Starting test_openfile_limits!===\n");
 	test_openfile_limits();
 	printf("Passed Part 1 of fsyscalltest\n");
 
-	// simple_test();
-	// printf("Passed Part 2 of fsyscalltest\n");
+	printf("\n===Starting simple_test!===\n");
+	simple_test();
+	printf("Passed Part 2 of fsyscalltest\n");
 	
 	// simultaneous_write_test();
 	// printf("Passed Part 3 of fsyscalltest\n");
