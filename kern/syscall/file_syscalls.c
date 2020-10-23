@@ -19,8 +19,6 @@
 
 int sys_open(const char *filename, int flags, mode_t mode, int *retval)
 {
-    KASSERT(filename != NULL);
-
     // validate flags (https://lwn.net/Articles/588444/)
     if (flags & ~(O_RDONLY | O_WRONLY | O_RDWR |
                   O_CREAT | O_EXCL | O_TRUNC |
