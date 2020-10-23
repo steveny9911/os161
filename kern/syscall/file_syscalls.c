@@ -263,12 +263,8 @@ int sys_chdir(const char *pathname)
 int sys_dup2(int oldfd, int newfd, int *retval)
 {
     // validate file handles
-    if (oldfd < 0 || newfd < 0) {
+    if (oldfd < 0 || newfd < 0 || oldfd > OPEN_MAX || newfd > OPEN_MAX) {
         return EBADF;
-    }
-
-    if (oldfd > OPEN_MAX || newfd > OPEN_MAX) {
-        return EMFILE;
     }
 
     // Using dup2 to clone a file handle onto itself has no effect.
