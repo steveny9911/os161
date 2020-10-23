@@ -16,6 +16,51 @@
 #include <err.h>
 #include <limits.h>
 
+static void
+_getcwd(char *buf, int len)
+{
+	int ret;
+
+	ret = __getcwd(buf, len);
+	if(ret < 0)
+	{
+		err(1, "__getcwd");
+	}
+	if(ret > len)
+	{
+		err(1, "Unexpected return value from __getcwd: %d\n",
+		    ret);
+	}
+
+	/* Ensure null termination. */
+	buf[ret] = 0;
+
+}
+
+/*
+ * This test is really simple. We want it to run on emufs,
+ * and we can't do more sophisticated things with directories
+ * here. 
+ */
+static void
+dir_test()
+{
+	char chdir_name[] = "testbin";
+	char buf[NAME_MAX+1];
+	int ret;
+
+	printf("_getcwd\n");
+	_getcwd(buf, NAME_MAX);
+	printf("__getcwd returned: %s\n", buf);
+
+	ret = chdir(chdir_name);
+	if(ret)
+	{
+		err(1, "chdir into %s", chdir_name);
+	}
+}
+
+
 /*
  * This tests the very basic functionality of dup2.
  * We open/create a file, duplicate the file descriptor, 
@@ -34,17 +79,20 @@ test_dup2()
 
 	file = "testfile";
 
+	// printf("---open file\n");
 	fd = open(file, O_WRONLY|O_CREAT|O_TRUNC, 0664);
 	if (fd<0) {
 		err(1, "%s: open for write", file);
 	}
 
+	// printf("---write file\n");
 	rv = write(fd, writebuf, 40);
 	if (rv<0) {
 		err(1, "%s: write", file);
 	}
 	
 	dupfd = fd + 1;
+	// printf("---dup2 fd: %d, dupfd: %d\n", fd, dupfd);
 	rv = dup2(fd, dupfd);
 	if (rv<0) {
 		err(1, "%s: dup2", file);
@@ -54,31 +102,37 @@ test_dup2()
 		err(1, "dup2() returned %d, expected %d\n", rv, dupfd);
 	}
 
+	// printf("---write dupfd\n");
 	rv = write(dupfd, writebuf, 40);
 	if (rv<0) {
 		err(1, "%s: write via duplicated fd", file);
 	}
 
+	// printf("---close file\n");
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (original fd)", file);
 	}
 
+	// printf("---close dupfd\n");
 	rv = close(dupfd);
 	if (rv<0) {
 		err(1, "%s: close (duplicate)", file);
 	}
 
+	// printf("---open file2\n");
 	fd = open(file, O_RDONLY);
 	if (fd<0) {
 		err(1, "%s: open for read", file);
 	}
 
+	// printf("---read file2\n");
 	rv = read(fd, readbuf, 80);
 	if (rv<0) {
 		err(1, "%s: read", file);
 	}
 
+	// printf("---close file2\n");
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (3d time)", file);
@@ -121,45 +175,45 @@ simultaneous_write_test()
 	file1 = "testfile1";
 	file2 = "testfile2";
 
-	printf("---open file1\n");
+	// printf("---open file1\n");
 	fd1 = open(file1, O_RDWR|O_CREAT|O_TRUNC, 0664);
 	if (fd1<0) {
 		err(1, "%s: open for write", file1);
 	}
 
-	printf("---open file2\n");
+	// printf("---open file2\n");
 	fd2 = open(file2, O_RDWR|O_CREAT|O_TRUNC, 0664);
 	if (fd2<0) {
 		err(1, "%s: open for write", file2);
 	}
 
-	printf("---write file1\n");
+	// printf("---write file1\n");
 	rv = write(fd1, writebuf1, 40);
 	if (rv<0) {
 		err(1, "%s: write", file1);
 	}
 
-	printf("---write file2\n");
+	// printf("---write file2\n");
 	rv = write(fd2, writebuf2, 40);
 	if (rv<0) {
 		err(1, "%s: write", file2);
 	}
 
-	printf("---lseek file1\n");
+	// printf("---lseek file1\n");
 	/* Rewind both files */
 	lseek_ret = lseek(fd1, -(40-seekpos), SEEK_CUR);
 	if (lseek_ret != seekpos) {
 		err(1, "%s: lseek", file1);
 	}
 
-	printf("---lseek file2\n");
+	// printf("---lseek file2\n");
 	lseek_ret = lseek(fd2, seekpos, SEEK_SET);
 	if (lseek_ret != seekpos) {
 		err(1, "%s: lseek", file2);
 	}
 
 	/* Read and test the data from the first file */
-	printf("---read 2 file1\n");
+	// printf("---read 2 file1\n");
 	rv = read(fd1, readbuf, 40-seekpos);
 	if (rv<0) {
 		err(1, "%s: read", file1);
@@ -169,7 +223,7 @@ simultaneous_write_test()
 	if (strcmp(readbuf, &writebuf1[seekpos]))
 		errx(1, "Buffer data mismatch for %s!", file1);
 	
-	printf("---read 2 file2\n");
+	// printf("---read 2 file2\n");
 	/* Read and test the data from the second file */
 	rv = read(fd2, readbuf, 40-seekpos);
 	if (rv<0) {
@@ -183,13 +237,13 @@ simultaneous_write_test()
 		errx(1, "Buffer data mismatch for %s!", file2);
 	}
 
-	printf("---close file1\n");
+	// printf("---close file1\n");
 	rv = close(fd1);
 	if (rv<0) {
 		err(1, "%s: close", file1);
 	}
 
-	printf("---close file2\n");
+	// printf("---close file2\n");
 	rv = close(fd2);
 	if (rv<0)
 	{
@@ -357,12 +411,13 @@ main()
 	simultaneous_write_test();
 	printf("Passed Part 3 of fsyscalltest\n");
 	
-	printf("\n===Starting part 4: !===\n");
+	printf("\n===Starting part 4: test_dup2!===\n");
 	test_dup2();
 	printf("Passed Part 4 of fsyscalltest\n");
 
-	// dir_test();
-	// printf("Passed Part 5 of fsyscalltest\n");
+	printf("\n===Starting part 5: dir_test!===\n");
+	dir_test();
+	printf("Passed Part 5 of fsyscalltest\n");
 	
 	printf("All done!\n");
 	

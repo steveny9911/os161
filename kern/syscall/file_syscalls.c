@@ -293,13 +293,12 @@ int sys_dup2(int oldfd, int newfd, int *retval)
         if (result) {
             return result;
         }
-        openfile_decref(newfile);
-        *retval = newfd;
-        return 0;
+        openfile_cleanup(newfile);
     }
 
     // clone oldfd onto newfd
     curproc->p_ft->openfiles[newfd] = oldfile;
+    openfile_incref(oldfile);
 
     *retval = newfd;
     return 0;
