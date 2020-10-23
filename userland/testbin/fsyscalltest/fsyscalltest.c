@@ -16,6 +16,101 @@
 #include <err.h>
 #include <limits.h>
 
+/* Open two files, write to them, read from them, make sure the
+ * content checks, then close them. 
+ */
+static void
+simultaneous_write_test()
+{
+  	static char writebuf1[41] = "Cabooble-madooddle, bora-bora-bora.....\n";
+	static char writebuf2[41] = "Yada, yada, yada, yada, yada, yada.....\n";
+	static char readbuf[41];
+	static int seekpos = 20; // must be less than the writebuf length
+
+	const char *file1, *file2;
+	int fd1, fd2, rv;
+	off_t lseek_ret;
+
+	file1 = "testfile1";
+	file2 = "testfile2";
+
+	printf("---open file1\n");
+	fd1 = open(file1, O_RDWR|O_CREAT|O_TRUNC, 0664);
+	if (fd1<0) {
+		err(1, "%s: open for write", file1);
+	}
+
+	printf("---open file2\n");
+	fd2 = open(file2, O_RDWR|O_CREAT|O_TRUNC, 0664);
+	if (fd2<0) {
+		err(1, "%s: open for write", file2);
+	}
+
+	printf("---write file1\n");
+	rv = write(fd1, writebuf1, 40);
+	if (rv<0) {
+		err(1, "%s: write", file1);
+	}
+
+	printf("---write file2\n");
+	rv = write(fd2, writebuf2, 40);
+	if (rv<0) {
+		err(1, "%s: write", file2);
+	}
+
+	printf("---lseek file1\n");
+	/* Rewind both files */
+	lseek_ret = lseek(fd1, -(40-seekpos), SEEK_CUR);
+	if (lseek_ret != seekpos) {
+		err(1, "%s: lseek", file1);
+	}
+
+	printf("---lseek file2\n");
+	lseek_ret = lseek(fd2, seekpos, SEEK_SET);
+	if (lseek_ret != seekpos) {
+		err(1, "%s: lseek", file2);
+	}
+
+	/* Read and test the data from the first file */
+	printf("---read 2 file1\n");
+	rv = read(fd1, readbuf, 40-seekpos);
+	if (rv<0) {
+		err(1, "%s: read", file1);
+	}	
+	readbuf[40] = 0;
+	
+	if (strcmp(readbuf, &writebuf1[seekpos]))
+		errx(1, "Buffer data mismatch for %s!", file1);
+	
+	printf("---read 2 file2\n");
+	/* Read and test the data from the second file */
+	rv = read(fd2, readbuf, 40-seekpos);
+	if (rv<0) {
+		err(1, "%s: read", file2);
+	}
+	readbuf[40] = 0;
+
+	if (strcmp(readbuf, &writebuf2[seekpos])) {
+		printf("Expected: \"%s\", actual: \"%s\"\n", writebuf2,
+		       readbuf);
+		errx(1, "Buffer data mismatch for %s!", file2);
+	}
+
+	printf("---close file1\n");
+	rv = close(fd1);
+	if (rv<0) {
+		err(1, "%s: close", file1);
+	}
+
+	printf("---close file2\n");
+	rv = close(fd2);
+	if (rv<0)
+	{
+		err(1, "%s: close", file2);
+	}
+
+}
+
 /* 
  * This is essentially the same code as in filetest.c, except we don't
  * expect any arguments, so the test can be executed before processes are
@@ -34,47 +129,47 @@ simple_test()
 
 	file = "testfile";
 
-	printf("open 1\n");
+	// printf("open 1\n");
 	fd = open(file, O_WRONLY|O_CREAT|O_TRUNC, 0664);
 	if (fd<0) {
 		err(1, "%s: open for write", file);
 	}
 
-	printf("write 1\n");
+	// printf("write 1\n");
 	rv = write(fd, writebuf, 40);
 	if (rv<0) {
 		err(1, "%s: write", file);
 	}
 
-	printf("close 1\n");
+	// printf("close 1\n");
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (1st time)", file);
 	}
 
-	printf("open 2\n");
+	// printf("open 2\n");
 	fd = open(file, O_RDONLY);
 	if (fd<0) {
 		err(1, "%s: open for read", file);
 	}
 
-	printf("read 1\n");
+	// printf("read 1\n");
 	rv = read(fd, readbuf, 40);
 	if (rv<0) {
 		err(1, "%s: read", file);
 	}
 
-	printf("close 2\n");
+	// printf("close 2\n");
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (2nd time)", file);
 	}
 
-	printf("check null\n");
+	// printf("check null\n");
 	/* ensure null termination */
 	readbuf[40] = 0;
 
-	printf("check compare\n");
+	// printf("check compare\n");
 	if (strcmp(readbuf, writebuf)) {
 		errx(1, "Buffer data mismatch!");
 	}
@@ -163,16 +258,17 @@ main()
 {
 	printf("\n===Starting fsyscalltest!===\n");
 
-	printf("\n===Starting test_openfile_limits!===\n");
+	printf("\n===Starting part 1: test_openfile_limits!===\n");
 	test_openfile_limits();
 	printf("Passed Part 1 of fsyscalltest\n");
 
-	printf("\n===Starting simple_test!===\n");
+	printf("\n===Starting part 2: simple_test!===\n");
 	simple_test();
 	printf("Passed Part 2 of fsyscalltest\n");
 	
-	// simultaneous_write_test();
-	// printf("Passed Part 3 of fsyscalltest\n");
+	printf("\n===Starting part 3: simultaneous_write_test!===\n");
+	simultaneous_write_test();
+	printf("Passed Part 3 of fsyscalltest\n");
 	
 	// test_dup2();
 	// printf("Passed Part 4 of fsyscalltest\n");
