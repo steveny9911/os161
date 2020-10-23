@@ -33,6 +33,7 @@ openfile_init(struct vnode *vn, int status)
     file->file_offsetlock = lock_create("file");
     if (file->file_offsetlock == NULL)
     {
+        kfree(file);
         return NULL;
     }
     spinlock_init(&file->file_countlock);
@@ -51,11 +52,9 @@ void openfile_cleanup(struct openfile *file)
     spinlock_cleanup(&file->file_countlock);
     lock_destroy(file->file_offsetlock);
 
-    file->file_refcount = 0;
-    // file->file_offset = NULL;
-    // file->status = NULL;
+    vfs_close(file->file_vnode);
 
-    vnode_cleanup(file->file_vnode);
+    kfree(file);
 }
 
 /**
@@ -78,26 +77,14 @@ void openfile_incref(struct openfile *file)
  */
 void openfile_decref(struct openfile *file)
 {
-    bool destroy;
-
     KASSERT(file != NULL);
 
     spinlock_acquire(&file->file_countlock);
-
-    KASSERT(file->file_refcount > 0);
-    if (file->file_refcount > 1)
-    {
+    if (file->file_refcount > 1) {
         file->file_refcount--;
-        destroy = false;
-    }
-    else
-    {
-        destroy = true;
-    }
-    spinlock_release(&file->file_countlock);
-
-    if (destroy)
-    {
+        spinlock_release(&file->file_countlock);
+    } else {
+        spinlock_release(&file->file_countlock);
         openfile_cleanup(file);
     }
 }
