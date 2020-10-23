@@ -22,6 +22,7 @@ _getcwd(char *buf, int len)
 	int ret;
 
 	ret = __getcwd(buf, len);
+	printf("__getcwd buf: %s, len: %d, ret: %d\n", buf, len, ret);
 	if(ret < 0)
 	{
 		err(1, "__getcwd");
@@ -53,6 +54,7 @@ dir_test()
 	_getcwd(buf, NAME_MAX);
 	printf("__getcwd returned: %s\n", buf);
 
+	printf("chdir\n");
 	ret = chdir(chdir_name);
 	if(ret)
 	{

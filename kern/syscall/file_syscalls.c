@@ -240,8 +240,7 @@ int sys_chdir(const char *pathname)
 
     // copy pathname into kernel
     char *kname = kmalloc(PATH_MAX);
-    size_t len = (size_t)strlen(pathname);
-    int result = copyinstr((const_userptr_t)pathname, kname, len, NULL);
+    int result = copyinstr((const_userptr_t)pathname, kname, PATH_MAX, NULL);
     if (result)
     {
         kfree(kname);
@@ -304,7 +303,7 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     return 0;
 }
 
-int sys___getcwd(char *buf, size_t buflen)
+int sys___getcwd(char *buf, size_t buflen, int *retval)
 {
     // this call behaves like read
     struct iovec iov;
@@ -317,5 +316,7 @@ int sys___getcwd(char *buf, size_t buflen)
         return result;
     }
 
-    return (int)uu.uio_resid;
+    //returns the length of the data returned.
+    *retval = buflen - uu.uio_resid;
+    return 0;
 }
