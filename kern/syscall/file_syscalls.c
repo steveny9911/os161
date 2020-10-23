@@ -152,6 +152,11 @@ int sys_close(int fd)
     struct filetable *ft = curproc->p_ft;
     struct openfile *file;
 
+    // validate fd
+    if (ft->openfiles[fd] == NULL) {
+        return EBADF;
+    }
+
     // get the openfile from the filetable
     int result = filetable_get(ft, fd, &file);
     if (result)
