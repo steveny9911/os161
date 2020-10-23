@@ -236,11 +236,12 @@ int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
 int sys_chdir(const char *pathname)
 {
     if (pathname == NULL) {
-        return ENOENT;
+        return EFAULT;
     }
 
     // copy pathname into kernel
     char *kname = kmalloc(PATH_MAX);
+
     int result = copyinstr((const_userptr_t)pathname, kname, PATH_MAX, NULL);
     if (result)
     {
@@ -306,6 +307,11 @@ int sys_dup2(int oldfd, int newfd, int *retval)
 
 int sys___getcwd(char *buf, size_t buflen, int *retval)
 {
+    // validate buflen
+    if (buflen == 0) {
+        return ENOENT;
+    }
+
     // this call behaves like read
     struct iovec iov;
     struct uio uu;
