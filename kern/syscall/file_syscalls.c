@@ -150,11 +150,6 @@ int sys_close(int fd)
     struct filetable *ft = curproc->p_ft;
     struct openfile *file;
 
-    // validate fd
-    if (ft->openfiles[fd] == NULL) {
-        return EBADF;
-    }
-
     // get the openfile from the filetable
     int result = filetable_get(ft, fd, &file);
     if (result)
@@ -240,7 +235,9 @@ int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
 
 int sys_chdir(const char *pathname)
 {
-    KASSERT(pathname != NULL);
+    if (pathname == NULL) {
+        return ENOENT;
+    }
 
     // copy pathname into kernel
     char *kname = kmalloc(PATH_MAX);

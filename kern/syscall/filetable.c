@@ -83,6 +83,10 @@ int filetable_get(struct filetable *ft, int index, struct openfile **ret)
     // check if file descriptor index is in range or not
     if (index < 0 || index > OPEN_MAX)
         return EBADF;
+    // validate fd
+    if (ft->openfiles[index] == NULL) {
+        return EBADF;
+    }
 
     // get the open file at file descriptor index
     struct openfile *file;
