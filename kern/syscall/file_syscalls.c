@@ -17,13 +17,20 @@
 #include <vfs.h>
 #include <lib.h>
 
+/**
+ * Open the file, device, or other kernel object named by the pathname
+ * @param filename pathname of the file 
+ * @param flags    how to open the file
+ * @param mode     permissions to use the file
+ * @param retval   actual return - file descriptor index
+ * @return 0 success, else error code
+ */
 int sys_open(const char *filename, int flags, mode_t mode, int *retval)
 {
-    // validate flags (https://lwn.net/Articles/588444/)
+    // validate flags
     if (flags & ~(O_RDONLY | O_WRONLY | O_RDWR |
                   O_CREAT | O_EXCL | O_TRUNC |
-                  O_APPEND))
-    {
+                  O_APPEND)) {
         return EINVAL;
     }
 
@@ -33,7 +40,7 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
         return ENOMEM;
     }
 
-    // size_t len = (size_t)strlen(filename);
+    // copy filename into kernel
     int result = copyinstr((const_userptr_t)filename, kname, NAME_MAX, NULL);
     if (result) {
         kfree(kname);
@@ -48,7 +55,7 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
         return result;
     }
 
-    // put openfile onto the process's filetable
+    // put openfile onto process's filetable
     result = filetable_add(curproc->p_ft, file, retval);
     if (result) {
         kfree(kname);
@@ -59,16 +66,25 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
     return 0;
 }
 
+/**
+ * Read bytes from the file
+ * @param fd     file to read from
+ * @param buf    space to store the read bytes
+ * @param buflen length to read
+ * @param retval actual return - bytes read
+ * @return 0 success, else error code
+ */
 int sys_read(int fd, void *buf, size_t buflen, int *retval)
 {
-    // get openfile with filetable_get --- using fd as filetable index
+    // get openfile with filetable_get
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result)
+    if (result) {
         return result;
+    }
 
     // get openfile's offset
-    // acquire lock --- release lock after all read is done
+    // acquire lock
     off_t offset;
     lock_acquire(file->file_offsetlock);
     offset = file->file_offset;
@@ -82,23 +98,29 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
     // VOP_READ to actually perform the read
     struct vnode *v = file->file_vnode;
     result = VOP_READ(v, &uu);
-    if (result)
-    {
+    if (result) {
         lock_release(file->file_offsetlock);
         return result;
     }
 
     // done reading
-    // how much did we read? --- update file_offset and return
+    // update file_offset and return
     off_t new_offset = uu.uio_offset;
     file->file_offset = uu.uio_offset;
     lock_release(file->file_offsetlock);
 
-    // retvel --- count of bytes read
+    // return count of bytes read
     *retval = new_offset - offset;
     return 0;
 }
 
+/**
+ * Write bytes to the file.
+ * @param fd file to write to
+ * @param buf space to store the written bytes 
+ * @param nbytes length to write
+ * @param retval return value
+ */
 int sys_write(int fd, void *buf, size_t nbytes, int *retval)
 {
     // same as sys_read
@@ -108,13 +130,12 @@ int sys_write(int fd, void *buf, size_t nbytes, int *retval)
     // get openfile with filetable_get --- using fd as index
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result)
-    {
+    if (result) {
         return result;
     }
 
     // get openfile offset
-    // get lock --- release lock after all read is done
+    // release lock after all read is done
     off_t offset;
     lock_acquire(file->file_offsetlock);
     offset = file->file_offset;
@@ -128,23 +149,27 @@ int sys_write(int fd, void *buf, size_t nbytes, int *retval)
     // VOP_WRITE
     struct vnode *v = file->file_vnode;
     result = VOP_WRITE(v, &uu);
-    if (result)
-    {
+    if (result) {
         lock_release(file->file_offsetlock);
         return result;
     }
 
     // done writing
-    // how much did we write? --- update file_offset and return
+    // update file_offset and return
     off_t new_offset = uu.uio_offset;
     file->file_offset = uu.uio_offset;
     lock_release(file->file_offsetlock);
 
-    // retvel --- count of bytes wrote
+    // return count of bytes wrote
     *retval = new_offset - offset;
     return 0;
 }
 
+/**
+ * Close file
+ * @param fd file descriptor index
+ * @return 0 success, else error code
+ */
 int sys_close(int fd)
 {
     struct filetable *ft = curproc->p_ft;
@@ -152,15 +177,13 @@ int sys_close(int fd)
 
     // get the openfile from the filetable
     int result = filetable_get(ft, fd, &file);
-    if (result)
-    {
+    if (result) {
         return result;
     }
 
     // remove the openfile from the filetable
     result = filetable_remove(ft, fd);
-    if (result)
-    {
+    if (result) {
         return result;
     }
 
@@ -170,13 +193,20 @@ int sys_close(int fd)
     return 0;
 }
 
+/**
+ * Change current position in file
+ * @param fd file descriptor index
+ * @param pos position
+ * @param whence seek operation
+ * @param retval actual return - new file offset
+ * @return 0 success, else error code
+ */
 int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
 {
     // get openfile
     struct openfile *file;
     int result = filetable_get(curproc->p_ft, fd, &file);
-    if (result)
-    {
+    if (result) {
         return result;
     }
 
@@ -187,36 +217,29 @@ int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
 
     struct stat file_info;
 
-    // switch-case for "whence"
     switch (whence)
     {
-    // SEEK_SET, the new position is pos.
-    case SEEK_SET:
+    case SEEK_SET: // SEEK_SET, the new position is pos
         new_offset = pos;
         break;
-    // SEEK_CUR, the new position is the current position plus pos.
-    case SEEK_CUR:
+    case SEEK_CUR: // SEEK_CUR, the new position is the current position plus pos
         new_offset += pos;
         break;
-    // SEEK_END, the new position is the position of end-of-file plus pos.
-    case SEEK_END:
+    case SEEK_END: // SEEK_END, the new position is the position of end-of-file plus pos
         result = VOP_STAT(file->file_vnode, &file_info);
-        if (result)
-        {
+        if (result) {
             lock_release(file->file_offsetlock);
             return result;
         }
         new_offset = file_info.st_size + pos;
         break;
-    // anything else, lseek fails.
-    default:
+    default: // anything else, lseek fails
         lock_release(file->file_offsetlock);
         return EINVAL;
     }
 
     // validate new offset
-    if (new_offset < 0)
-    {
+    if (new_offset < 0) {
         lock_release(file->file_offsetlock);
         return EINVAL;
     }
@@ -233,25 +256,28 @@ int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
     return 0;
 }
 
+/**
+ * Change current directory
+ * @param pathname directory pathname
+ * @return 0 success, else error code
+ */
 int sys_chdir(const char *pathname)
 {
+    // validate pathname
     if (pathname == NULL) {
         return EFAULT;
     }
 
     // copy pathname into kernel
     char *kname = kmalloc(PATH_MAX);
-
     int result = copyinstr((const_userptr_t)pathname, kname, PATH_MAX, NULL);
-    if (result)
-    {
+    if (result) {
         kfree(kname);
         return result;
     }
 
     result = vfs_chdir(kname);
-    if (result)
-    {
+    if (result) {
         kfree(kname);
         return result;
     }
@@ -260,6 +286,13 @@ int sys_chdir(const char *pathname)
     return 0;
 }
 
+/**
+ * Clone file handle / descriptor from old file descriptor to new file descriptor
+ * @param oldfd  from this file descriptor index
+ * @param newfd  to this file descriptor index
+ * @param retval actual return - new file descriptor index
+ * @return 0 success, else error code
+ */
 int sys_dup2(int oldfd, int newfd, int *retval)
 {
     // validate file handles
@@ -279,13 +312,12 @@ int sys_dup2(int oldfd, int newfd, int *retval)
         return result;
     }
     
-    // If newfd names an already-open file, that file is closed.
+    // If newfd names an already-open file, that file is closed
     if (curproc->p_ft->openfiles[newfd] != NULL) {
         result = filetable_get(curproc->p_ft, newfd, &newfile);
         if (result) {
             return result;
         }
-
         result = filetable_remove(curproc->p_ft, newfd);
         if (result) {
             return result;
@@ -301,6 +333,13 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     return 0;
 }
 
+/**
+ * Get name of current working directory (backend)
+ * @param buf    buffer to read to
+ * @param buflen buffer size
+ * @param retval actual return - the length of data returned
+ * @return 0 success, else error code
+ */
 int sys___getcwd(char *buf, size_t buflen, int *retval)
 {
     // validate buflen
@@ -319,7 +358,7 @@ int sys___getcwd(char *buf, size_t buflen, int *retval)
         return result;
     }
 
-    //returns the length of the data returned.
+    // returns the length of the data returned
     *retval = buflen - uu.uio_resid;
     return 0;
 }

@@ -75,8 +75,7 @@
  * stack, starting at sp+16 to skip over the slots for the
  * registerized values, with copyin().
  */
-void
-syscall(struct trapframe *tf)
+void syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
@@ -84,7 +83,7 @@ syscall(struct trapframe *tf)
 
 	off_t pos = 0;
 	int whence = 0;
-	int64_t retval64;
+	int64_t retval64; // used to return 64-bit (by sys_lseek)
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -104,78 +103,85 @@ syscall(struct trapframe *tf)
 	retval = 0;
 	retval64 = -1;
 
-	switch (callno) {
-	    case SYS_reboot:
+	switch (callno)
+	{
+	case SYS_reboot:
 		err = sys_reboot(tf->tf_a0);
 		break;
 
-	    case SYS___time:
+	case SYS___time:
 		err = sys___time((userptr_t)tf->tf_a0,
-				 (userptr_t)tf->tf_a1);
+										 (userptr_t)tf->tf_a1);
 		break;
 
-		// file_sycalls
-		case SYS_open:
+	// file_sycalls
+	case SYS_open:
 		err = sys_open((const char *)tf->tf_a0, tf->tf_a1, tf->tf_a3, &retval);
 		break;
 
-		case SYS_read:
+	case SYS_read:
 		err = sys_read(tf->tf_a0, (void *)tf->tf_a1, (size_t)tf->tf_a2, &retval);
 		break;
 
-		case SYS_write:
+	case SYS_write:
 		err = sys_write(tf->tf_a0, (void *)tf->tf_a1, (size_t)tf->tf_a2, &retval);
 		break;
 
-		case SYS_close:
+	case SYS_close:
 		err = sys_close(tf->tf_a0);
 		break;
 
-		case SYS_lseek: 
+	case SYS_lseek:
+		// read in 64-bit argument --- a0 used (32-bit), a1 not used, a2-a3 used (64-bit)
 		pos = ((off_t)tf->tf_a2 << 32) | tf->tf_a3;
+
+		// read whence from stack (since we needed more space for arguments)
 		whence = 0;
-		err = copyin((const_userptr_t) tf->tf_sp + 16, &whence, sizeof(int));
+		err = copyin((const_userptr_t)tf->tf_sp + 16, &whence, sizeof(int));
+
 		err = sys_lseek(tf->tf_a0, pos, whence, &retval64);
 		break;
 
-		case SYS_chdir:
+	case SYS_chdir:
 		err = sys_chdir((const char *)tf->tf_a0);
 		break;
 
-		case SYS_dup2:
+	case SYS_dup2:
 		err = sys_dup2(tf->tf_a0, tf->tf_a1, &retval);
 		break;
 
-		case SYS___getcwd:
+	case SYS___getcwd:
 		err = sys___getcwd((char *)tf->tf_a0, (size_t)tf->tf_a1, &retval);
 		break;
 
-		default:
+	default:
 		kprintf("Unknown syscall %d\n", callno);
 		err = ENOSYS;
 		break;
 	}
 
-
-	if (err) {
+	if (err)
+	{
 		/*
 		 * Return the error code. This gets converted at
 		 * userlevel to a return value of -1 and the error
 		 * code in errno.
 		 */
 		tf->tf_v0 = err;
-		tf->tf_a3 = 1;      /* signal an error */
+		tf->tf_a3 = 1; /* signal an error */
 	}
-	else if (retval64 > -1) {
-		/* Success 64-bit return */
-		tf->tf_v0 = (retval64 >> 32);
-		tf->tf_v1 = (retval64 & 0xffffffff);
+	else if (retval64 > -1)
+	{
+		// success 64-bit return
+		tf->tf_v0 = (retval64 >> 32);				 // higher bit
+		tf->tf_v1 = (retval64 & 0xffffffff); // lower bit
 		tf->tf_a3 = 0;
 	}
-	else {
-		// regular 32-bit return
+	else
+	{
+		// success regular 32-bit return
 		tf->tf_v0 = retval;
-		tf->tf_a3 = 0;      /* signal no error */
+		tf->tf_a3 = 0; /* signal no error */
 	}
 
 	/*
@@ -199,8 +205,7 @@ syscall(struct trapframe *tf)
  *
  * Thus, you can trash it and do things another way if you prefer.
  */
-void
-enter_forked_process(struct trapframe *tf)
+void enter_forked_process(struct trapframe *tf)
 {
 	(void)tf;
 }

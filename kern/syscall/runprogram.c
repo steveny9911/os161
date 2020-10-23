@@ -69,7 +69,6 @@ runprogram(char *progname)
 	}
 
 	// setting console
-	
 	struct filetable *ft = curproc->p_ft;
 
 	// By default, fd 0, 1 and 2 are used for stdin, stdout, stderr 
@@ -84,8 +83,7 @@ runprogram(char *progname)
 	char *con_out = kstrdup("con:");
 	char *con_err = kstrdup("con:");
 
-	// open the files 
-	//?return error
+	// open the console files for read and write
 	result = vfs_open(con_in, O_RDONLY, 0, &file0->file_vnode);
 	if (result) {
 			vfs_close(file0->file_vnode);
@@ -103,6 +101,8 @@ runprogram(char *progname)
 	ft->openfiles[0] = file0;
 	ft->openfiles[1] = file1;
 	ft->openfiles[2] = file2;
+
+	// done setting up consoles
 
 	/* We should be a new process. */
 	KASSERT(proc_getas() == NULL);

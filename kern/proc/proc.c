@@ -83,7 +83,7 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
-	proc->p_ft = filetable_init();
+	proc->p_ft = filetable_init(); // create new process table for current process
 
 	return proc;
 }

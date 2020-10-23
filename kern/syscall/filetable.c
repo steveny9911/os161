@@ -54,19 +54,18 @@ int filetable_add(struct filetable *ft, struct openfile *file, int *index)
     KASSERT(ft != NULL);
     KASSERT(file != NULL);
 
+    // loop the filetable array until there is an empty NULL entry
     for (int i = 0; i < OPEN_MAX; i++)
     {
         if (ft->openfiles[i] == NULL)
         {
-            ft->openfiles[i] = file;
-            *index = i;
-
-            // kprintf("filetable_add i: %d\n", i);
+            ft->openfiles[i] = file; // put the openfile at that space
+            *index = i;              // return file descriptor index
             return 0;
         }
     }
 
-    return EMFILE;
+    return EMFILE; // seems like the filetable is full
 }
 
 /**
@@ -82,16 +81,21 @@ int filetable_get(struct filetable *ft, int index, struct openfile **ret)
 
     // check if file descriptor index is in range or not
     if (index < 0 || index > OPEN_MAX)
+    {
         return EBADF;
+    }
+
     // validate fd
-    if (ft->openfiles[index] == NULL) {
+    if (ft->openfiles[index] == NULL)
+    {
         return EBADF;
     }
 
     // get the open file at file descriptor index
     struct openfile *file;
     file = ft->openfiles[index];
-    if (file == NULL) {
+    if (file == NULL)
+    {
         return ENOENT;
     }
 
