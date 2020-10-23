@@ -226,11 +226,12 @@ int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
     // set new offset
     file->file_offset = new_offset;
 
+    // done --- set retval to be new offset
+    *retval = new_offset;
+
     // release lock
     lock_release(file->file_offsetlock);
 
-    // done --- set retval to be new offset
-    *retval = new_offset;
     return 0;
 }
 

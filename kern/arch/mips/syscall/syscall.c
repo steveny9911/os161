@@ -166,15 +166,13 @@ syscall(struct trapframe *tf)
 		tf->tf_v0 = err;
 		tf->tf_a3 = 1;      /* signal an error */
 	}
+	else if (retval64 > -1) {
+		/* Success 64-bit return */
+		tf->tf_v0 = (retval64 >> 32);
+		tf->tf_v1 = (retval64 & 0xffffffff);
+		tf->tf_a3 = 0;
+	}
 	else {
-		/* Success. */
-
-		// 64-bit return
-		if (retval64 > -1) {
-			tf->tf_v0 = (retval64 >> 32);
-			tf->tf_v1 = (retval64 & 0xffffffff);
-		}
-
 		// regular 32-bit return
 		tf->tf_v0 = retval;
 		tf->tf_a3 = 0;      /* signal no error */
