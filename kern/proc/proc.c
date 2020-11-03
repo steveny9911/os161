@@ -185,6 +185,26 @@ proc_bootstrap(void)
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
+
+	// TODO: create process table here
+	// add an initial entry for 0 and 1
+	proc_table = array_create();
+	if (proc_table == NULL) {
+		panic("proc_create for proc_table failed\n");
+	}
+
+	curproc->p_pid = 1;
+	curproc->p_ppid = 0;
+
+	struct p_info kproc_info = kmalloc(sizeof(struct p_info));
+	kproc_info->proc = curproc;
+	kproc_info->exited = false;
+	kproc_info->exitstatus = NULL;
+	kproc_info->cond = cv_create("p_cv");
+
+	unsigned index;
+	array_add(proctable, NULL, &index);
+	array_add(proctable, kproc_info, &index);
 }
 
 /*

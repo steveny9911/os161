@@ -1,0 +1,43 @@
+Start with fork()
+
+Need to add & change process (proc.h)
+- store "pid"
+- thread is a process
+  - https://piazza.com/class/keabkwwe5wwpc?cid=983
+
+Need a global process table (pid_table)
+- can put it in proc.h
+  - https://piazza.com/class/keabkwwe5wwpc?cid=983
+  - https://piazza.com/class/keabkwwe5wwpc?cid=996
+- to keep track of all processes (in an array, like file table)
+  - process id
+  - parent process id
+  - exit boolean
+  - exit status
+  - list of children processes
+  - condition variable for waitpid() later on
+- hand out pid
+  - how are we assigning pid? 
+    - randomly?
+    - increment from 1?
+  - pid 0 is for kernel
+- get a process's information based on pid
+
+Steps:
+1. Copy address space
+  - as_create(), as_copy(), as_define_stack()
+  - load_elf()?
+2. Copy file table
+  - copy the file table
+  - share the file descriptor entries (openfile)
+    - share only files opened before fork()
+    - handle race condition (lock)
+3. Copy architectural state
+  - copy PC, stack pointer, registers in trapframe
+    - except for the register that keeps return value
+  - done copying before thread_fork()
+4. Copy kernel thread
+  - thread_fork()
+5. Return to user mode
+  - parent returns from exception
+  - child returns via enter_new_process()

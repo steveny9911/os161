@@ -58,6 +58,12 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
+// TODO: fill them in!
+int sys_fork(struct trapframe *tf, pid_t *retval);
+int sys_waitpid(pid_t pid, int *status, int options, pid_t *retval);
+int sys_getpid(pid_t *retval);
+void sys__exit(int exitcode);
+
 int sys_open(const char *filename, int flags, mode_t mode, int *retval);
 int sys_close(int fd);
 

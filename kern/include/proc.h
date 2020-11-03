@@ -39,6 +39,7 @@
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
 #include <filetable.h>
+#include <limits.h>
 
 struct addrspace;
 struct vnode;
@@ -50,6 +51,14 @@ struct proc {
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	struct threadarray p_threads;	/* Threads in this process */
+
+	// TODO: need
+	// - pid
+	// - parent pid
+	// - children pid array
+	pid_t p_pid;
+	pid_t p_ppid;
+	pid_t p_cpid[PROCS_MAX];
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -63,6 +72,18 @@ struct proc {
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
+
+// TODO: 
+// struct --- process info (pid, parent pid, exit status, exit boolean)
+struct p_info
+{
+	struct proc *proc; // current process pointer
+	bool exited;       // did the process exit?
+	int exitstatus;    // exit status --- needs to be saved
+	struct cv *cond;   // condition variable for waitpid()
+};
+
+struct array *proctable; // dynamic array for "p_info"
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
