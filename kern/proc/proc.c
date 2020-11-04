@@ -54,6 +54,7 @@
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+struct array *proctable = array_create();
 
 /*
  * Create a proc structure.
@@ -84,6 +85,25 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	proc->p_ft = filetable_init(); // create new process table for current process
+
+	// TODO: create process table here
+	// add an initial entry for 0 and 1
+	// proc_table = array_create();
+	// if (proc_table == NULL) {
+	// 	panic("proc_create for proc_table failed\n");
+	// }
+
+	proc->p_pid = 1;
+	proc->p_ppid = 0;
+	proc->p_chpid = array_create();
+	proc->p_exited = false;
+	proc->p_exitstatus = NULL;
+	proc->p_wait_cv = cv_create("p_wait_cv");
+	array_add(proctable, proc, NULL);
+
+	// unsigned index;
+	// array_add(proctable, NULL, &index);
+	// array_add(proctable, kproc_info, &index);
 
 	return proc;
 }
@@ -185,26 +205,6 @@ proc_bootstrap(void)
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
-
-	// TODO: create process table here
-	// add an initial entry for 0 and 1
-	proc_table = array_create();
-	if (proc_table == NULL) {
-		panic("proc_create for proc_table failed\n");
-	}
-
-	curproc->p_pid = 1;
-	curproc->p_ppid = 0;
-
-	struct p_info kproc_info = kmalloc(sizeof(struct p_info));
-	kproc_info->proc = curproc;
-	kproc_info->exited = false;
-	kproc_info->exitstatus = NULL;
-	kproc_info->cond = cv_create("p_cv");
-
-	unsigned index;
-	array_add(proctable, NULL, &index);
-	array_add(proctable, kproc_info, &index);
 }
 
 /*
