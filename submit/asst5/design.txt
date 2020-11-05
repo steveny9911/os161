@@ -5,6 +5,7 @@ Need to add & change process (proc.h)
 - thread is a process
   - https://piazza.com/class/keabkwwe5wwpc?cid=983
 
+getpid():
 Need a global process table (pid_table)
 - can put it in proc.h
   - https://piazza.com/class/keabkwwe5wwpc?cid=983
@@ -23,10 +24,9 @@ Need a global process table (pid_table)
   - pid 0 is for kernel
 - get a process's information based on pid
 
-Steps:
+fork():
 1. Copy address space
   - as_create(), as_copy(), as_define_stack()
-  - load_elf()?
 2. Copy file table
   - copy the file table
   - share the file descriptor entries (openfile)
@@ -41,3 +41,39 @@ Steps:
 5. Return to user mode
   - parent returns from exception
   - child returns via enter_new_process()
+
+exec():
+1. Copy the arguments from the old address space
+  - as_copy()
+2. Get a new address space
+  - as_create()
+3. Switch to the new address space
+  - as_activate()
+4. Load a new executable
+  - load_elf()
+5. Define a new stack region
+  - as_define_stack()
+6. Copy the arguments to the new address space
+  - copyin from the old address space
+    - start at argv[0], stop at NULL (count the arguments)
+    - copyin strings at each pointer (record the length)
+  - copyin into kernel memory
+    - argument count, pointers to strings in kernel memory, strings
+    - no need for NULL terminator
+  - copyinstr() for length limit and length recording
+  - copyout to new address space
+    - argv array with terminator, strings
+7. Clean up the old address space
+  - must come back to the old address space if exec fails
+  - as_destroy()
+8. Wrap to user mode
+  - enter_new_process()
+
+waitpid() & _exit():
+Scenario 1: Child exits after parent calls waitpid
+  - parent blocked before child calls exit
+Scenario 2: Child exits before parent calls waitpid
+  - save child's exit status befroe exits
+  - must support repeated calls to waitpid()
+Scenario 3: Parent exits before the child exits
+  - child knows parent exits and clears save exit status

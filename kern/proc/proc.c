@@ -94,12 +94,13 @@ proc_create(const char *name)
 	// }
 
 	proc->p_pid = 1;
+	proc->p_index = -1;
 	proc->p_ppid = 0;
 	proc->p_chpid = array_create();
 	proc->p_exited = false;
-	proc->p_exitstatus = NULL;
+	proc->p_status = NULL;
 	proc->p_wait_cv = cv_create("p_wait_cv");
-	array_add(proctable, proc, NULL);
+	array_add(proctable, proc, proc->p_index);
 
 	// unsigned index;
 	// array_add(proctable, NULL, &index);
@@ -127,6 +128,12 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
+
+	array_remove(proctable, proc->p_index);
+	cv_destroy(proc->p_wait_cv);
+	proc->p_status = ; 
+	proc->p_exited = true;
+	array_destroy(proc->p_chpid);
 
 	/*
 	 * We don't take p_lock in here because we must have the only

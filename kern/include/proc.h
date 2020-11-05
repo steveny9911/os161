@@ -66,10 +66,11 @@ struct proc {
 	// - parent pid
 	// - children pid array
 	pid_t p_pid;
+	int p_index;
 	pid_t p_ppid;
 	struct array *p_chpid;
 	bool p_exited;       // did the process exit?
-	int p_exitstatus;    // exit status --- needs to be saved
+	int p_status;    // exit status --- needs to be saved
 	struct cv *p_wait_cv;   // condition variable for waitpid()
 };
 
