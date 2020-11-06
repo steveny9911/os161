@@ -17,6 +17,7 @@ Need a global process table (pid_table)
   - exit status
   - list of children processes
   - condition variable for waitpid() later on
+  - and more...
 - hand out pid
   - how are we assigning pid? 
     - randomly?
@@ -40,7 +41,7 @@ fork():
   - thread_fork()
 5. Return to user mode
   - parent returns from exception
-  - child returns via enter_new_process()
+  - child returns via enter_forked_process()
 
 exec():
 1. Copy the arguments from the old address space

@@ -69,7 +69,7 @@ runprogram(char *progname)
 	}
 
 	// setting console
-	struct filetable *ft = curproc->p_ft;
+	struct filetable *ft = curproc->p_filetable;
 
 	// By default, fd 0, 1 and 2 are used for stdin, stdout, stderr 
 	// create new files

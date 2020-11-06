@@ -56,7 +56,7 @@ int sys_open(const char *filename, int flags, mode_t mode, int *retval)
     }
 
     // put openfile onto process's filetable
-    result = filetable_add(curproc->p_ft, file, retval);
+    result = filetable_add(curproc->p_filetable, file, retval);
     if (result) {
         kfree(kname);
         return result;
@@ -78,7 +78,7 @@ int sys_read(int fd, void *buf, size_t buflen, int *retval)
 {
     // get openfile with filetable_get
     struct openfile *file;
-    int result = filetable_get(curproc->p_ft, fd, &file);
+    int result = filetable_get(curproc->p_filetable, fd, &file);
     if (result) {
         return result;
     }
@@ -129,7 +129,7 @@ int sys_write(int fd, void *buf, size_t nbytes, int *retval)
 
     // get openfile with filetable_get --- using fd as index
     struct openfile *file;
-    int result = filetable_get(curproc->p_ft, fd, &file);
+    int result = filetable_get(curproc->p_filetable, fd, &file);
     if (result) {
         return result;
     }
@@ -172,7 +172,7 @@ int sys_write(int fd, void *buf, size_t nbytes, int *retval)
  */
 int sys_close(int fd)
 {
-    struct filetable *ft = curproc->p_ft;
+    struct filetable *ft = curproc->p_filetable;
     struct openfile *file;
 
     // get the openfile from the filetable
@@ -205,7 +205,7 @@ int sys_lseek(int fd, off_t pos, int whence, int64_t *retval)
 {
     // get openfile
     struct openfile *file;
-    int result = filetable_get(curproc->p_ft, fd, &file);
+    int result = filetable_get(curproc->p_filetable, fd, &file);
     if (result) {
         return result;
     }
@@ -307,18 +307,18 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     }
 
     struct openfile *oldfile, *newfile;
-    int result = filetable_get(curproc->p_ft, oldfd, &oldfile);
+    int result = filetable_get(curproc->p_filetable, oldfd, &oldfile);
     if (result) {
         return result;
     }
     
     // If newfd names an already-open file, that file is closed
-    if (curproc->p_ft->openfiles[newfd] != NULL) {
-        result = filetable_get(curproc->p_ft, newfd, &newfile);
+    if (curproc->p_filetable->openfiles[newfd] != NULL) {
+        result = filetable_get(curproc->p_filetable, newfd, &newfile);
         if (result) {
             return result;
         }
-        result = filetable_remove(curproc->p_ft, newfd);
+        result = filetable_remove(curproc->p_filetable, newfd);
         if (result) {
             return result;
         }
@@ -326,7 +326,7 @@ int sys_dup2(int oldfd, int newfd, int *retval)
     }
 
     // clone oldfd onto newfd
-    curproc->p_ft->openfiles[newfd] = oldfile;
+    curproc->p_filetable->openfiles[newfd] = oldfile;
     openfile_incref(oldfile);
 
     *retval = newfd;

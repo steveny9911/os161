@@ -59,7 +59,7 @@ struct proc {
 	struct vnode *p_cwd;		/* current working directory */
 
 	/* add more material here as needed */
-	struct filetable *p_ft;
+	struct filetable *p_filetable;
 	
 	// TODO: need
 	// - pid

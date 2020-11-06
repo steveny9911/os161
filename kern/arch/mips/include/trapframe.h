@@ -106,5 +106,6 @@ __DEAD void mips_usermode(struct trapframe *tf);
 extern vaddr_t cpustacks[];
 extern vaddr_t cputhreads[];
 
+void trapframe_copy(struct trapframe *, struct trapframe **);
 
 #endif /* _MIPS_TRAPFRAME_H_ */

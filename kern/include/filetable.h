@@ -14,5 +14,6 @@ void filetable_cleanup(struct filetable *);
 int filetable_add(struct filetable *, struct openfile *, int *);
 int filetable_get(struct filetable *, int, struct openfile **);
 int filetable_remove(struct filetable *, int);
+int filetable_copy(struct filetale *, struct filetable **);
 
 #endif /* _FILETABLE_H_ */

@@ -84,7 +84,7 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
-	proc->p_ft = filetable_init(); // create new process table for current process
+	proc->p_filetable = filetable_init(); // create new process table for current process
 
 	// TODO: create process table here
 	// add an initial entry for 0 and 1

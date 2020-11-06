@@ -436,3 +436,46 @@ enter_new_process(int argc, userptr_t argv, userptr_t env,
 
 	mips_usermode(&tf);
 }
+
+void trapframe_copy(struct trapframe *old, struct trapframe **ret) 
+{
+	struct trapframe *new = kmalloc(sizeof(struct trapframe));
+	new->tf_vaddr = old->tf_vaddr;
+	new->tf_status = old->tf_status;
+	new->tf_cause = old->tf_cause;
+	new->tf_lo = old->tf_lo;
+	new->tf_hi = old->tf_hi;
+	new->tf_ra = old->tf_ra;
+	new->tf_at = old->tf_at;
+	new->tf_v1 = old->tf_v1;
+	new->tf_a0 = old->tf_a0;
+	new->tf_a1 = old->tf_a1;
+	new->tf_a2 = old->tf_a2;
+	new->tf_a3 = old->tf_a3;
+	new->tf_t0 = old->tf_t0;
+	new->tf_t1 = old->tf_t1;
+	new->tf_t2 = old->tf_t2;
+	new->tf_t3 = old->tf_t3;
+	new->tf_t4 = old->tf_t4;
+	new->tf_t5 = old->tf_t5;
+	new->tf_t6 = old->tf_t6;
+	new->tf_t7 = old->tf_t7;
+	new->tf_s0 = old->tf_s0;
+	new->tf_s1 = old->tf_s1;
+	new->tf_s2 = old->tf_s2;
+	new->tf_s3 = old->tf_s3;
+	new->tf_s4 = old->tf_s4;
+	new->tf_s5 = old->tf_s5;
+	new->tf_s6 = old->tf_s6;
+	new->tf_s7 = old->tf_s7;
+	new->tf_t8 = old->tf_t8;
+	new->tf_t9 = old->tf_t9;
+	new->tf_k0 = old->tf_k0;
+	new->tf_k1 = old->tf_k1;
+	new->tf_gp = old->tf_gp;
+	new->tf_sp = old->tf_sp;
+	new->tf_s8 = old->tf_s8;
+	new->tf_epc = old->tf_epc;
+
+	*ret = new;
+}

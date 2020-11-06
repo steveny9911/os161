@@ -120,3 +120,19 @@ int filetable_remove(struct filetable *ft, int index)
     ft->openfiles[index] = NULL;
     return 0;
 }
+
+int filetable_copy(struct filetable *old, struct filetable **ret)
+{
+    struct filetable *new = filetable_init();
+    if (new == NULL) {
+        return ENOMEM;
+    }
+    
+    for (int i = 0; i < OPEN_MAX; i++) {
+        new->openfiles[i] = old->openfiles[i];
+        openfile_incref(old->openfiles[i]);
+    }
+
+    *ret = new;
+    return 0;
+}
