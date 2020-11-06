@@ -209,7 +209,23 @@ void syscall(struct trapframe *tf)
  *
  * Thus, you can trash it and do things another way if you prefer.
  */
-void enter_forked_process(struct trapframe *tf)
+void enter_forked_process(void *data1, unsigned long data2)
 {
-	
+	(void) data2; // not using this but still need to follow function signature called by thread_fork()
+
+	// child thread needs to put the trapframe onto its stack, and
+	// modify it so that it returns the correct value
+	// 
+	// local variables are on the stack, so we dereference and make a local variable (child_tf)
+	//
+	// not using pointer because it might require synchronization (parent may run and return before child)
+	//
+	struct trapframe child_tf = *(struct trapframe *)data1;
+
+	child_tf.tf_v0 = 0;   // return code for child
+	child_tf.tf_a3 = 0;   // no error
+
+	child_tf.tf_sp += 4;  // increment program counter
+
+	mips_usermode(&tf);
 }
