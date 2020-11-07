@@ -6,6 +6,7 @@
 #include <trapframe.h>
 #include <kern/errno.h>
 #include <proc.h>
+#include <types.h>
 
 /**
  * Called by parent to create a child process
@@ -29,7 +30,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 
     // copy file table
     // filetable_copy returns a pointer so we do no need to initialize
-    result = filetable_copy(parentc->p_filetable, &child->p_filetable);
+    result = filetable_copy(parent->p_filetable, &child->p_filetable);
     if (result)
         return result;
 
@@ -51,24 +52,22 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     // trapframe_copy(parent_tf, &child_tf);
     *child_tf = *parent_tf;
 
-    // TODO: assign pid to child
-
-    result = thread_fork("child", child, &enter_forked_process, (void *) child_tf, NULL);
-    if (result) {
+    // assign pid to child and set process table
+    result = proctable_assign(&child->p_pid);
+    if (result)
+    {
         proc_destroy(child);
         kfree(child_tf);
         return result;
     }
 
-    /* as_define_stack related to execv
-    result = as_define_stack(child->p_addrspace, NULL);
+    result = thread_fork("child", child, &enter_forked_process, (void *)child_tf, NULL);
     if (result)
     {
+        proc_destroy(child);
+        kfree(child_tf);
         return result;
     }
-    */
-
-    // TODO: need to set process table
 
     // set retval to child pid for parent
     *retval = child->p_pid;

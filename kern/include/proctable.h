@@ -28,7 +28,7 @@ void protable_bootstrap(void);  // initialize global proctable (called in main.c
 // copied from filetable --- will need to change
 struct proctable *proctable_init(void);
 // void proctable_cleanup(void); --- will never delete the process table since it should always exist as long as OS is running
-int proctable_assign(struct procinfo *, pid_t *);
+int proctable_assign(pid_t *pid);
 int proctable_unassign(pid_t);
 
 // function to set exit status later

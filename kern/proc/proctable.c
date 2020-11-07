@@ -26,8 +26,7 @@ void proctable_bootstrap(void)
 
 struct proctable *proctable_init(void)
 {
-    struct proctable *pt;
-    pt = kmalloc(sizeof(struct proctable));
+    struct proctable *pt = kmalloc(sizeof(struct proctable));
     if (pt == NULL) {
         return NULL;
     }
@@ -39,10 +38,9 @@ struct proctable *proctable_init(void)
     return pt;
 }
 
-int proctable_assign(struct procinfo *pinfo, pid_t *pid)
+int proctable_assign(pid_t *pid)
 {
     KASSERT(pt != NULL);
-    KASSERT(pinfo != NULL);
 
     // lock the table
     lock_acquire(p_lock);
@@ -71,12 +69,14 @@ int proctable_assign(struct procinfo *pinfo, pid_t *pid)
 }
 
 // function to remove a pid from the table
-void proctable_unassign(pid_t this_pid) { // need better name
+void proctable_unassign(pid_t this_pid) // need better name
+{ 
+    KASSERT(this_pid < 2 || this_pid > PROCS_MAX);
+
     // acquire lock
     lock_acquire(p_lock);
 
     // get procinfo from table to check validate
-    KASSERT(this_pid < 2 || this_pid > PROCS_MAX);
     struct procinfo *this_pinfo = pt[this_pid];
     // --- not null, exited == false, ppid???
     KASSERT(this_pinfo != NULL);
@@ -107,16 +107,17 @@ static struct procinfo *procinfo_create(pid_t ppid)
     pinfo->p_ppid = ppid;
     pinfo->p_exited = false;
     pinfo->p_status = -1;
-    pinfo->p_cv = cv_create("procinfo wait cv");
+    pinfo->p_cv = cv_create("p_cv");
     if (pinfo->p_cv == NULL) {
         kfree(pinfo);
         return NULL;
     }
 
-    return procinfo;
+    return pinfo;
 }
 
-static void procinfo_cleanup(struct procinfo *pinfo) {
+static void procinfo_cleanup(struct procinfo *pinfo) 
+{
   KASSERT(pinfo != NULL);
   KASSERT(pinfo->p_exited == true);
   
