@@ -64,30 +64,12 @@ struct proc {
 	// TODO: need
 	// - pid
 	// - parent pid
-	// - children pid array
 	pid_t p_pid;
-	int p_index;
 	pid_t p_ppid;
-	struct array *p_chpid;
-	bool p_exited;       // did the process exit?
-	int p_status;    // exit status --- needs to be saved
-	struct cv *p_wait_cv;   // condition variable for waitpid()
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
-
-// // TODO: 
-// // struct --- process info (exit boolean, exit status, condition variable)
-// struct proc_info
-// {
-// 	struct proc *proc; // current process pointer
-// 	bool exited;       // did the process exit?
-// 	int status;    // exit status --- needs to be saved
-// 	struct cv *cond;   // condition variable for waitpid()
-// };
-
-struct array *proctable; // dynamic array for processes
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);

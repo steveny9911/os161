@@ -51,6 +51,8 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     // trapframe_copy(parent_tf, &child_tf);
     *child_tf = *parent_tf;
 
+    // TODO: assign pid to child
+
     result = thread_fork("child", child, &enter_forked_process, (void *) child_tf, NULL);
     if (result) {
         proc_destroy(child);
