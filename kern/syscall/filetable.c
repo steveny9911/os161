@@ -123,7 +123,8 @@ int filetable_remove(struct filetable *ft, int index)
 
 int filetable_copy(struct filetable *old, struct filetable **ret)
 {
-    struct filetable *new = filetable_init();
+    struct filetable *new;
+    new = filetable_init();
     if (new == NULL) {
         return ENOMEM;
     }

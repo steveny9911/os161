@@ -48,7 +48,7 @@ int proctable_assign(pid_t *pid)
     // increment p_count
     p_count++;
     // make a new variable to hold p_count ---> as new_pid for this process
-    pid_t new_pid = (pid_t) p_count;
+    pid_t new_pid = p_count;
     // validate new_pid with PROCS_MAX
     if (new_pid > PROCS_MAX) {
         return ENPROC;

@@ -45,7 +45,7 @@ fork():
 
 exec():
 1. Copy the arguments from the old address space
-  - as_copy()
+  - 
 2. Get a new address space
   - as_create()
 3. Switch to the new address space
