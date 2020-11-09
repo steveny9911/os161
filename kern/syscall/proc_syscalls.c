@@ -29,37 +29,37 @@ void sys__exit(int exitcode)
 int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 {
     // create a new child process
-    kprintf("create runprogram\n");
+    // kprintf("create runprogram\n");
     struct proc *child = proc_create_runprogram("child");
     if (child == NULL) {
-        kprintf("failed create runprogram\n");
+        // kprintf("failed create runprogram\n");
         return ENOMEM;
     }
 
     // copy address space
     // as_copy returns a pointer so we do no need to initialize
-    kprintf("copy address space\n");
+    // kprintf("copy address space\n");
     int result = as_copy(proc_getas(), &child->p_addrspace);
     if (result) {
-        kprintf("failed address space\n");
+        // kprintf("failed address space\n");
         proc_destroy(child);
         return result;
     }
 
     // copy file table
     // filetable_copy returns a pointer so we do no need to initialize
-    kprintf("copy filetable\n");
+    // kprintf("copy filetable\n");
     result = filetable_copy(curproc->p_filetable, &child->p_filetable);
     if (result) {
-        kprintf("failed filetable\n");
+        // kprintf("failed filetable\n");
         proc_destroy(child);
         return result;
     }
 
-    kprintf("malloc trapframe\n");
+    // kprintf("malloc trapframe\n");
     struct trapframe *child_tf = kmalloc(sizeof(struct trapframe));
     if (child_tf == NULL) {
-        kprintf("failed malloc trapframe\n");
+        // kprintf("failed malloc trapframe\n");
         proc_destroy(child);
         kfree(child_tf);
         return ENOMEM;
@@ -76,11 +76,11 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     *child_tf = *parent_tf;
 
     // assign pid to child and set process table
-    kprintf("assign pid\n");
+    // kprintf("assign pid\n");
     kprintf("%d", curproc->p_pid);
     result = proctable_assign(&child->p_pid);
     if (result) {
-        kprintf("failed assign pid\n");
+        // kprintf("failed assign pid\n");
         proc_destroy(child);
         kfree(child_tf);
         return result;
@@ -89,10 +89,10 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     // set retval to child pid for parent
     *retval = child->p_pid;
 
-    kprintf("begin enter_forked_process\n");
+    // kprintf("begin enter_forked_process\n");
     result = thread_fork("child", child, &enter_forked_process, (void *)child_tf, (unsigned long)NULL);
     if (result) {
-        kprintf("failed enter_forked_process\n");
+        // kprintf("failed enter_forked_process\n");
         proc_destroy(child);
         kfree(child_tf);
         return result;
