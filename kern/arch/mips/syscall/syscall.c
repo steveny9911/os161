@@ -222,7 +222,8 @@ void enter_forked_process(void *data1, unsigned long data2)
 	//
 	struct trapframe tf = *(struct trapframe *)data1;
 
-	tf.tf_v0 = 0;   // return code for child
+	tf.tf_v0 = 0;    // return code for child
+	tf.tf_a3 = 0;    // return code for child
 	tf.tf_epc += 4;  // increment program counter
 
 	mips_usermode(&tf);

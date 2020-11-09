@@ -75,7 +75,6 @@ int sys_chdir(const char *pathname);
 int sys_dup2(int oldfd, int newfd, int *retval);
 int sys___getcwd(char *buf, size_t buflen, int *retval);
 
-// TODO: fill them in!
 int sys_fork(struct trapframe *parent_tf, pid_t *retval);
 int sys_execv(const char *program, char **argv, int *retval);
 int sys_waitpid(pid_t pid, int *status, int options, pid_t *retval);
