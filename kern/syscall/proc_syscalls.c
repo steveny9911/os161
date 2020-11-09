@@ -1,14 +1,26 @@
 #include <syscall.h>
-#include <trapframe.h>
+#include <mips/trapframe.h>
 #include <addrspace.h>
 #include <current.h>
-#include <filetable.h>
-#include <trapframe.h>
+#include <types.h>
 #include <kern/errno.h>
 #include <proc.h>
-#include <types.h>
+#include <proctable.h>
+#include <kern/wait.h>
 #include <copyinout.h>
 #include <vfs.h>
+
+int sys_getpid(pid_t *retval)
+{
+    *retval = curproc->p_pid;
+    return 0;
+}
+
+void sys__exit(int exitcode) 
+{
+    int exitstatus = _MKWAIT_EXIT(exitcode);
+    proctable_exit(exitstatus);
+}
 
 /**
  * Called by parent to create a child process
@@ -16,33 +28,38 @@
  */
 int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 {
-    // current process is the parent
-    struct proc *parent = curproc;
-
     // create a new child process
+    kprintf("create runprogram\n");
     struct proc *child = proc_create_runprogram("child");
     if (child == NULL) {
+        kprintf("failed create runprogram\n");
         return ENOMEM;
     }
 
     // copy address space
     // as_copy returns a pointer so we do no need to initialize
+    kprintf("copy address space\n");
     int result = as_copy(proc_getas(), &child->p_addrspace);
     if (result) {
+        kprintf("failed address space\n");
         proc_destroy(child);
         return result;
     }
 
     // copy file table
     // filetable_copy returns a pointer so we do no need to initialize
-    result = filetable_copy(proc_getft(), &child->p_filetable);
+    kprintf("copy filetable\n");
+    result = filetable_copy(curproc->p_filetable, &child->p_filetable);
     if (result) {
+        kprintf("failed filetable\n");
         proc_destroy(child);
         return result;
     }
 
+    kprintf("malloc trapframe\n");
     struct trapframe *child_tf = kmalloc(sizeof(struct trapframe));
     if (child_tf == NULL) {
+        kprintf("failed malloc trapframe\n");
         proc_destroy(child);
         kfree(child_tf);
         return ENOMEM;
@@ -59,15 +76,11 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     *child_tf = *parent_tf;
 
     // assign pid to child and set process table
+    kprintf("assign pid\n");
+    kprintf("%d", curproc->p_pid);
     result = proctable_assign(&child->p_pid);
     if (result) {
-        proc_destroy(child);
-        kfree(child_tf);
-        return result;
-    }
-
-    result = thread_fork("child", child, &enter_forked_process, (void *)child_tf, NULL);
-    if (result) {
+        kprintf("failed assign pid\n");
         proc_destroy(child);
         kfree(child_tf);
         return result;
@@ -76,110 +89,152 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     // set retval to child pid for parent
     *retval = child->p_pid;
 
+    kprintf("begin enter_forked_process\n");
+    result = thread_fork("child", child, &enter_forked_process, (void *)child_tf, (unsigned long)NULL);
+    if (result) {
+        kprintf("failed enter_forked_process\n");
+        proc_destroy(child);
+        kfree(child_tf);
+        return result;
+    }
+
     // no error
     return 0;
 }
 
-int sys_execv(const char *program, char **argv, int *retval)
-{
-    struct addrspace *as;
-    struct vnode *v;
-    vaddr_t entrypoint, stackptr;
-    int result;
-    char **kargv[ARG_MAX];  // kargv as buffer for copied arguments
-    size_t ALIGN = 4;
-    size_t argc, cnt;
+int sys_waitpid(pid_t pid, int *status, int options, pid_t *retval) {
+    kprintf("===%d\n", pid);
+    kprintf("===%d\n", *status);
+    kprintf("===%d\n", options);
 
-    // copy in arguments from old address space
-
-    // copy argument pointers to buffer
-    // pointers are aligned by 4
-    for (argc = 0; argv[argc] != NULL; argc++) {
-        result = copyinstr((const_userptr_t)argv[argc], kargv[argc * ALIGN], ALIGN, NULL);
-        if (result) {
-            return result;
-        }
-    }
-
-    // copy argument strings to buffer
-    for (int i = 0; i < argc; i++) {
-        char *ptr = kargv[i * ALIGN];
-        size_t base = (argc + 1) * ALIGN;
-        size_t len = 0;
-        cnt = 0;
-
-        // copy strings from address argument pointers point to
-        // length of string is stored in len
-        result = copyinstr((const_userptr_t)&ptr, kargv[base + cnt * ALIGN], ARG_MAX, &len);
-        if (result) {
-            return result;
-        }
-
-        // add paddings if string is not aligned by 4
-        if (len % ALIGN != 0) {
-            for (int pos = len + 1; pos <= (len / ALIGN + 1) * ALIGN; pos++) {
-                kargv[base + cnt * ALIGN + pos] = "\0";
-            }
-        }
-
-        // use cnt to record string position
-        cnt += (len / ALIGN);
-    }
-
-    // copied from runprogram()
-    result = vfs_open(program, O_RDONLY, 0, &v);
-    if (result) {
-        return result;
-    }
-
-    // create new address space
-    KASSERT(proc_getas() == NULL);
-    as = as_create();
-    if (as == NULL) {
-        vfs_close(v);
-        return ENOMEM;
-    }
-    proc_setas(as);
-    as_active();
-
-    // load executable
-    result = load_elf(v, &entrypoint);
-    if (result) {
-        vfs_close(v);
-        return result;
-    }
-
-    vfs_close(v);
-
-    // define new stack region
-    result = as_define_stack(as, &stackptr);
-    if (result) {
-        return result;
-    }
-
-    // copy arguments to new address space
-
-    // minus stack pointer with length of buffer
-    stackptr -= (argc + cnt) * ALIGN;
-    // update argument pointers to user stack
-    for (int i = 0; i < argc; i++) {
-        kargv[i * ALIGN] += stackptr;
-    }
-
-    // copy out arguments to user stack
-    for (int i = 0; i < (argc + cnt) * ALIGN; i++) {
-        result = copyoutsrt(kargv[i], (userptr_t)&stackptr, ARG_MAX, NULL);
-        if (result) { 
-            return result;
-        }
-    }
-
-    // clean up old address space
-    as_destroy();
-
-    // wrap to user mode
-    enter_new_process(argc, NULL, NULL, stackptr, entrypoint);
-
-    panic("enter_new_process returned\n");
-    return EINVAL;
+    *retval = 0;
+    return 0;
 }
+
+// int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval) {
+//     // waitpid can only be called on a child process (called by parent)
+
+//     // validate pid in range
+//     // make sure current process pid is not waitpid (don't let the process wait for itself)
+//     if (waitpid < 2 || curproc->p_pid == waitpid) {
+//         return EINVAL;
+//     }
+
+//     // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
+
+//     // get procinfo of the waitpid
+
+
+//     // make sure procinfo's parent is current process
+
+//     // has child exited already?
+//     // true --- set status, remove child procinfo, return 0
+//     // false --- cv wait
+//     // check has child exited after waking just to make sure
+
+//     // once awaken --- set status, remove child procinf0, return 0
+// }
+
+// int sys_execv(const char *program, char **argv, int *retval)
+// {
+//     struct addrspace *as;
+//     struct vnode *v;
+//     vaddr_t entrypoint, stackptr;
+//     int result;
+//     char **kargv[ARG_MAX];  // kargv as buffer for copied arguments
+//     size_t ALIGN = 4;
+//     size_t argc, cnt;
+
+//     // copy in arguments from old address space
+
+//     // copy argument pointers to buffer
+//     // pointers are aligned by 4
+//     for (argc = 0; argv[argc] != NULL; argc++) {
+//         result = copyinstr((const_userptr_t)argv[argc], kargv[argc * ALIGN], ALIGN, NULL);
+//         if (result) {
+//             return result;
+//         }
+//     }
+
+//     // copy argument strings to buffer
+//     for (int i = 0; i < argc; i++) {
+//         char *ptr = kargv[i * ALIGN];
+//         size_t base = (argc + 1) * ALIGN;
+//         size_t len = 0;
+//         cnt = 0;
+
+//         // copy strings from address argument pointers point to
+//         // length of string is stored in len
+//         result = copyinstr((const_userptr_t)&ptr, kargv[base + cnt * ALIGN], ARG_MAX, &len);
+//         if (result) {
+//             return result;
+//         }
+
+//         // add paddings if string is not aligned by 4
+//         if (len % ALIGN != 0) {
+//             for (int pos = len + 1; pos <= (len / ALIGN + 1) * ALIGN; pos++) {
+//                 kargv[base + cnt * ALIGN + pos] = "\0";
+//             }
+//         }
+
+//         // use cnt to record string position
+//         cnt += (len / ALIGN);
+//     }
+
+//     // copied from runprogram()
+//     result = vfs_open(program, O_RDONLY, 0, &v);
+//     if (result) {
+//         return result;
+//     }
+
+//     // create new address space
+//     KASSERT(proc_getas() == NULL);
+//     as = as_create();
+//     if (as == NULL) {
+//         vfs_close(v);
+//         return ENOMEM;
+//     }
+//     proc_setas(as);
+//     as_active();
+
+//     // load executable
+//     result = load_elf(v, &entrypoint);
+//     if (result) {
+//         vfs_close(v);
+//         return result;
+//     }
+
+//     vfs_close(v);
+
+//     // define new stack region
+//     result = as_define_stack(as, &stackptr);
+//     if (result) {
+//         return result;
+//     }
+
+//     // copy arguments to new address space
+
+//     // minus stack pointer with length of buffer
+//     stackptr -= (argc + cnt) * ALIGN;
+//     // update argument pointers to user stack
+//     for (int i = 0; i < argc; i++) {
+//         kargv[i * ALIGN] += stackptr;
+//     }
+
+//     // copy out arguments to user stack
+//     for (int i = 0; i < (argc + cnt) * ALIGN; i++) {
+//         result = copyoutsrt(kargv[i], (userptr_t)&stackptr, ARG_MAX, NULL);
+//         if (result) { 
+//             return result;
+//         }
+//     }
+
+//     // clean up old address space
+//     as_destroy();
+
+//     // wrap to user mode
+//     enter_new_process(argc, NULL, NULL, stackptr, entrypoint);
+
+//     panic("enter_new_process returned\n");
+//     return EINVAL;
+// }

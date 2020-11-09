@@ -56,10 +56,19 @@ int
 dofork(void)
 {
 	int pid;
+
+	printf("BEGIN DOFORK");
 	pid = fork();
 	if (pid < 0) {
-		warn("fork");
+		warn("------fork-----\n");
 	}
+
+	if (pid == 0) {
+		printf("Hi child!\n");
+	} else {
+		printf("Hi parent! child's pid: %d\n", pid);
+	}
+
 	return pid;
 }
 
@@ -75,14 +84,15 @@ check(void)
 	int i;
 
 	mypid = getpid();
+	printf("BEGIN CHECK");
 
 	/* Make sure each fork has its own address space. */
 	for (i=0; i<800; i++) {
 		volatile int seenpid;
 		seenpid = mypid;
 		if (seenpid != getpid()) {
-			errx(1, "pid mismatch (%d, should be %d) "
-			     "- your vm is broken!",
+			errx(1, "pid mismatch (%d, should be %d)\n"
+			     "- your vm is broken!\n",
 			     seenpid, getpid());
 		}
 	}
@@ -132,7 +142,8 @@ static
 void
 test(int nowait)
 {
-	int pid0, pid1, pid2, pid3;
+	// int pid0, pid1, pid2, pid3;0
+	int pid0;
 
 	/*
 	 * Caution: This generates processes geometrically.
@@ -142,25 +153,26 @@ test(int nowait)
 	 */
 
 	pid0 = dofork();
-	putchar('0');
+	printf("forktest-0");
+	// putchar('forktest-0');
 	check();
-	pid1 = dofork();
-	putchar('1');
-	check();
-	pid2 = dofork();
-	putchar('2');
-	check();
-	pid3 = dofork();
-	putchar('3');
-	check();
+	// pid1 = dofork();
+	// putchar('1');
+	// check();
+	// pid2 = dofork();
+	// putchar('2');
+	// check();
+	// pid3 = dofork();
+	// putchar('3');
+	// check();
 
 	/*
 	 * These must be called in reverse order to avoid waiting
 	 * improperly.
 	 */
-	dowait(nowait, pid3);
-	dowait(nowait, pid2);
-	dowait(nowait, pid1);
+	// dowait(nowait, pid3);
+	// dowait(nowait, pid2);
+	// dowait(nowait, pid1);
 	dowait(nowait, pid0);
 
 	putchar('\n');

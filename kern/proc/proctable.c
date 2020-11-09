@@ -1,8 +1,15 @@
 #include <proctable.h>
 #include <kern/errno.h>
+#include <types.h>
 #include <limits.h>
 #include <proc.h>
 #include <synch.h>
+#include <current.h>
+
+static struct procinfo *pt[PROCS_MAX];
+
+static pid_t p_count;              // keep track of number of assigned pid
+static struct lock *p_lock;        // lock for exit status
 
 void proctable_bootstrap(void)
 {
@@ -24,23 +31,10 @@ void proctable_bootstrap(void)
     }
 }
 
-struct proctable *proctable_init(void)
-{
-    struct proctable *pt = kmalloc(sizeof(struct proctable));
-    if (pt == NULL) {
-        return NULL;
-    }
-
-    for (int i = 0; i < PROCS_MAX; i++) {
-        pt[i] = NULL;
-    }
-
-    return pt;
-}
-
 int proctable_assign(pid_t *pid)
 {
     KASSERT(pt != NULL);
+    KASSERT(curproc->p_pid != 0);
 
     // lock the table
     lock_acquire(p_lock);
@@ -53,7 +47,8 @@ int proctable_assign(pid_t *pid)
     if (new_pid > PROCS_MAX) {
         return ENPROC;
     }
-    struct procinfo new_pinfo = procinfo_create(new_pid);
+
+    struct procinfo *new_pinfo = procinfo_create(curproc->p_pid);
     if (new_pinfo == NULL) {
         return ENOMEM;
     }
@@ -82,7 +77,7 @@ void proctable_unassign(pid_t this_pid) // need better name
     KASSERT(this_pinfo != NULL);
 
     this_pinfo->p_status = -1;  // set exit status to null (or -1)
-    this_pinfo->p_exited = true // set exited to true
+    this_pinfo->p_exited = true; // set exited to true
     this_pinfo->p_ppid = 0;       // set ppid to 0
     // destory procinfo
     procinfo_cleanup(this_pinfo);
@@ -94,9 +89,56 @@ void proctable_unassign(pid_t this_pid) // need better name
 }
 
 // function to set exit status ---> since some waking up needs to happen
+void proctable_exit(int exitstatus) {
+    // lock proctable
+    lock_acquire(p_lock);
+
+    pid_t pid = curproc->p_pid;
+    struct procinfo *pinfo = pt[pid];
+
+    // assuming we are parent --- find all child and destory
+    if (pid == 0) {
+        // set parent's exit boolean and status
+        pinfo->p_exited = true;
+        pinfo->p_status = exitstatus;
+
+        // destroy children's condition variable
+        for (int i = 0; i < p_count; i++) {
+            if (pt[i]->p_ppid == pid) {
+                // set these child to zombie parent
+                pt[i]->p_ppid = 0;
+                cv_destroy(pt[i]->p_cv);
+                // if child has exited --- destory
+                if (pt[i]->p_exited == true) {
+                    procinfo_cleanup(pt[i]);
+                }
+                // else nothing (we keep the child)
+            }
+        }
+    } 
+
+    // assuming we are (also) a child, get our parent and wake up
+    else {
+        // if our parent is alive --- wakeup our parent
+        if (pt[pinfo->p_ppid]->p_exited == false) {
+            cv_signal(pinfo->p_cv, p_lock);
+        } 
+        // else our parent has exited --- we destory ourself
+        else { 
+            procinfo_cleanup(pt[pid]);
+        }
+        pid = 0;
+    }
+
+    pt[pid] = pinfo;
+    curproc->p_pid = pid;
+
+    // release lock
+    lock_release(p_lock);
+}
 
 // ===== functions for procinfo =====
-static struct procinfo *procinfo_create(pid_t ppid)
+struct procinfo *procinfo_create(pid_t ppid)
 {
     struct procinfo *pinfo = kmalloc(sizeof(struct procinfo));
     if (pinfo == NULL) {
@@ -116,7 +158,7 @@ static struct procinfo *procinfo_create(pid_t ppid)
     return pinfo;
 }
 
-static void procinfo_cleanup(struct procinfo *pinfo) 
+void procinfo_cleanup(struct procinfo *pinfo) 
 {
   KASSERT(pinfo != NULL);
   KASSERT(pinfo->p_exited == true);

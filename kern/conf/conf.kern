@@ -381,6 +381,9 @@ file      syscall/filetable.c
 file      syscall/openfile.c
 file      syscall/file_syscalls.c
 
+file      proc/proctable.c
+file      syscall/proc_syscalls.c
+
 #
 # Startup and initialization
 #

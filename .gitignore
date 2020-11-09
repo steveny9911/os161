@@ -3,3 +3,5 @@
 defs.mk
 .vscode/
 .idea/
+userland/
+build

@@ -154,8 +154,20 @@ void syscall(struct trapframe *tf)
 		err = sys___getcwd((char *)tf->tf_a0, (size_t)tf->tf_a1, &retval);
 		break;
 
+	case SYS_getpid:
+		err = sys_getpid(&retval);
+		break;
+
 	case SYS_fork:
 		err = sys_fork(tf, &retval);
+		break;
+
+	case SYS_waitpid:
+		err = sys_waitpid((pid_t)tf->tf_a0, (int *)tf->tf_a1, tf->tf_a2, &retval);
+		break;
+
+	case SYS__exit:
+		sys__exit(tf->tf_a0);
 		break;
 
 	default:
@@ -211,6 +223,7 @@ void syscall(struct trapframe *tf)
  */
 void enter_forked_process(void *data1, unsigned long data2)
 {
+	kprintf("inside enter_forked_process\n");
 	(void) data2; // not using this but still need to follow function signature called by thread_fork()
 
 	// child thread needs to put the trapframe onto its stack, and
@@ -226,5 +239,6 @@ void enter_forked_process(void *data1, unsigned long data2)
 	tf.tf_a3 = 0;    // return code for child
 	tf.tf_epc += 4;  // increment program counter
 
+	kprintf("begin entering user mode\n");
 	mips_usermode(&tf);
 }
