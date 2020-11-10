@@ -24,6 +24,9 @@ void proctable_unassign(pid_t);
 // function to set exit status later
 void proctable_exit(int);
 
+// function for waiting
+int proctable_wait(pid_t, int *);
+
 // ====== functions for procinfo ======
 struct procinfo* procinfo_create(pid_t);
 void procinfo_cleanup(struct procinfo *);

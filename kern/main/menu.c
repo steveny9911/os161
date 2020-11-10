@@ -43,6 +43,7 @@
 #include <test.h>
 #include "opt-sfs.h"
 #include "opt-net.h"
+#include <proctable.h>
 
 /*
  * In-kernel menu and command dispatcher.
@@ -117,6 +118,7 @@ common_prog(int nargs, char **args)
 
 	/* Create a process for the new program to run in. */
 	proc = proc_create_runprogram(args[0] /* name */);
+	proctable_assign(&proc->p_pid);
 	if (proc == NULL) {
 		return ENOMEM;
 	}
@@ -135,6 +137,8 @@ common_prog(int nargs, char **args)
 	 * The new process will be destroyed when the program exits...
 	 * once you write the code for handling that.
 	 */
+	int status;
+	proctable_wait(proc->p_pid, &status);
 
 	return 0;
 }

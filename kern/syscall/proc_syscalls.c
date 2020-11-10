@@ -105,28 +105,12 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 }
 
 int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval) {
-    // waitpid can only be called on a child process (called by parent)
-    
+    (void) options;
 
-    // validate pid in range
-    // make sure current process pid is not waitpid (don't let the process wait for itself)
-    if (waitpid < 2 || curproc->p_pid == waitpid) {
-        return EINVAL;
-    }
-
-    // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
-
-    // get procinfo of the waitpid
-
-
-    // make sure procinfo's parent is current process
-
-    // has child exited already?
-    // true --- set status, remove child procinfo, return 0
-    // false --- cv wait
-    // check has child exited after waking just to make sure
-
-    // once awaken --- set status, remove child procinf0, return 0
+    int result = proctable_wait(waitpid, status);
+    // *status = pt[waitpid]->p_status;
+    *retval = waitpid;
+    return result;
 }
 
 // int sys_execv(const char *program, char **argv, int *retval)

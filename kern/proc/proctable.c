@@ -36,7 +36,6 @@ void proctable_bootstrap(void)
 int proctable_assign(pid_t *pid)
 {
     KASSERT(pt != NULL);
-    KASSERT(curproc->p_pid != 0);
 
     // lock the table
     lock_acquire(p_lock);
@@ -70,10 +69,11 @@ int proctable_assign(pid_t *pid)
 // function to remove a pid from the table
 void proctable_unassign(pid_t this_pid) // need better name
 { 
-    KASSERT(this_pid < 2 || this_pid > PROCS_MAX);
+    KASSERT(this_pid > 2 || this_pid < PROCS_MAX);
 
     // acquire lock
-    lock_acquire(p_lock);
+    // lock_acquire(p_lock);
+    KASSERT(lock_do_i_hold(p_lock) == true);
 
     // get procinfo from table to check validate
     struct procinfo *this_pinfo = pt[this_pid];
@@ -89,7 +89,7 @@ void proctable_unassign(pid_t this_pid) // need better name
     // set value of array to null
     pt[this_pid] = NULL;
 
-    lock_release(p_lock);
+    // lock_release(p_lock);
 }
 
 // function to set exit status ---> since some waking up needs to happen
@@ -145,6 +145,47 @@ void proctable_exit(int exitstatus) {
     proc_destroy(proc);
 
     thread_exit();
+}
+
+// function for wait pid
+int proctable_wait(pid_t waitpid, int *status) {
+
+    // validate pid in range
+    // make sure current process pid is not waitpid (don't let the process wait for itself)
+    if (waitpid < 2 || curproc->p_pid == waitpid) {
+        return EINVAL;
+    }
+
+    // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
+
+    // get procinfo of the waitpid
+    lock_acquire(p_lock);
+    struct procinfo *pinfo = pt[waitpid];
+    if (pinfo == NULL) {
+        lock_release(p_lock);
+        return ESRCH;
+    }
+
+    // make sure procinfo's parent is current process
+    if (pinfo->p_ppid != curproc->p_pid) {
+        lock_release(p_lock);
+        return ECHILD;
+    }
+
+    // has child exited already?
+    // true --- set status, remove child procinfo, return 0
+    // false --- cv wait, return 0
+    // check has child exited after waking just to make sure
+    if (pinfo->p_exited == false) {
+        cv_wait(pinfo->p_cv, p_lock);
+    }
+
+    *status = pt[waitpid]->p_status;
+
+    proctable_unassign(waitpid);
+    lock_release(p_lock);
+
+    return 0;
 }
 
 // ===== functions for procinfo =====
