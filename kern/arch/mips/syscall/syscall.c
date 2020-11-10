@@ -168,6 +168,7 @@ void syscall(struct trapframe *tf)
 
 	case SYS__exit:
 		sys__exit(tf->tf_a0);
+		panic("Should not return form exit");
 		break;
 
 	default:
@@ -223,7 +224,7 @@ void syscall(struct trapframe *tf)
  */
 void enter_forked_process(void *data1, unsigned long data2)
 {
-	kprintf("inside enter_forked_process\n");
+	// kprintf("inside enter_forked_process\n");
 	(void) data2; // not using this but still need to follow function signature called by thread_fork()
 
 	// child thread needs to put the trapframe onto its stack, and
@@ -239,6 +240,6 @@ void enter_forked_process(void *data1, unsigned long data2)
 	tf.tf_a3 = 0;    // return code for child
 	tf.tf_epc += 4;  // increment program counter
 
-	kprintf("begin entering user mode\n");
+	// kprintf("begin entering user mode\n");
 	mips_usermode(&tf);
 }

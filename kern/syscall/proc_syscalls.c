@@ -28,6 +28,8 @@ void sys__exit(int exitcode)
  */
 int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 {
+    int result;
+
     // create a new child process
     // kprintf("create runprogram\n");
     struct proc *child = proc_create_runprogram("child");
@@ -36,10 +38,24 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
         return ENOMEM;
     }
 
+    // assign pid to child and set process table
+    // kprintf("assign pid\n");
+    // kprintf("%d", curproc->p_pid);
+    result = proctable_assign(&child->p_pid);
+    if (result) {
+        // kprintf("failed assign pid\n");
+        proc_destroy(child);
+        // kfree(child_tf);
+        return result;
+    }
+
+    // set retval to child pid for parent
+    *retval = child->p_pid;
+
     // copy address space
     // as_copy returns a pointer so we do no need to initialize
     // kprintf("copy address space\n");
-    int result = as_copy(proc_getas(), &child->p_addrspace);
+    result = as_copy(proc_getas(), &child->p_addrspace);
     if (result) {
         // kprintf("failed address space\n");
         proc_destroy(child);
@@ -75,20 +91,6 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     // trapframe_copy(parent_tf, &child_tf);
     *child_tf = *parent_tf;
 
-    // assign pid to child and set process table
-    // kprintf("assign pid\n");
-    kprintf("%d", curproc->p_pid);
-    result = proctable_assign(&child->p_pid);
-    if (result) {
-        // kprintf("failed assign pid\n");
-        proc_destroy(child);
-        kfree(child_tf);
-        return result;
-    }
-
-    // set retval to child pid for parent
-    *retval = child->p_pid;
-
     // kprintf("begin enter_forked_process\n");
     result = thread_fork("child", child, &enter_forked_process, (void *)child_tf, (unsigned long)NULL);
     if (result) {
@@ -102,38 +104,30 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     return 0;
 }
 
-int sys_waitpid(pid_t pid, int *status, int options, pid_t *retval) {
-    kprintf("===%d\n", pid);
-    kprintf("===%d\n", *status);
-    kprintf("===%d\n", options);
+int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval) {
+    // waitpid can only be called on a child process (called by parent)
+    
 
-    *retval = 0;
-    return 0;
+    // validate pid in range
+    // make sure current process pid is not waitpid (don't let the process wait for itself)
+    if (waitpid < 2 || curproc->p_pid == waitpid) {
+        return EINVAL;
+    }
+
+    // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
+
+    // get procinfo of the waitpid
+
+
+    // make sure procinfo's parent is current process
+
+    // has child exited already?
+    // true --- set status, remove child procinfo, return 0
+    // false --- cv wait
+    // check has child exited after waking just to make sure
+
+    // once awaken --- set status, remove child procinf0, return 0
 }
-
-// int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval) {
-//     // waitpid can only be called on a child process (called by parent)
-
-//     // validate pid in range
-//     // make sure current process pid is not waitpid (don't let the process wait for itself)
-//     if (waitpid < 2 || curproc->p_pid == waitpid) {
-//         return EINVAL;
-//     }
-
-//     // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
-
-//     // get procinfo of the waitpid
-
-
-//     // make sure procinfo's parent is current process
-
-//     // has child exited already?
-//     // true --- set status, remove child procinfo, return 0
-//     // false --- cv wait
-//     // check has child exited after waking just to make sure
-
-//     // once awaken --- set status, remove child procinf0, return 0
-// }
 
 // int sys_execv(const char *program, char **argv, int *retval)
 // {

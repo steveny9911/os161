@@ -24,6 +24,8 @@ void proctable_bootstrap(void)
         panic("Panic creating kernel procinfo in proctable");
     }
 
+    curproc->p_pid = 1;
+
     p_count = 1;
     p_lock = lock_create("p_lock");
     if (p_lock == NULL) {
@@ -45,11 +47,13 @@ int proctable_assign(pid_t *pid)
     pid_t new_pid = p_count;
     // validate new_pid with PROCS_MAX
     if (new_pid > PROCS_MAX) {
+        lock_release(p_lock);
         return ENPROC;
     }
 
     struct procinfo *new_pinfo = procinfo_create(curproc->p_pid);
     if (new_pinfo == NULL) {
+        lock_release(p_lock);
         return ENOMEM;
     }
     // put into the table (index: new_pid, value: new_pinfo)
@@ -93,48 +97,54 @@ void proctable_exit(int exitstatus) {
     // lock proctable
     lock_acquire(p_lock);
 
-    pid_t pid = curproc->p_pid;
-    struct procinfo *pinfo = pt[pid];
+    // get our parent if any
+    struct proc *proc = curproc;
+    struct procinfo *pinfo = pt[curproc->p_pid];
+
+    pinfo->p_exited = true;
+    pinfo->p_status = exitstatus;
 
     // assuming we are parent --- find all child and destory
-    if (pid == 0) {
-        // set parent's exit boolean and status
-        pinfo->p_exited = true;
-        pinfo->p_status = exitstatus;
-
-        // destroy children's condition variable
-        for (int i = 0; i < p_count; i++) {
-            if (pt[i]->p_ppid == pid) {
-                // set these child to zombie parent
-                pt[i]->p_ppid = 0;
-                cv_destroy(pt[i]->p_cv);
-                // if child has exited --- destory
-                if (pt[i]->p_exited == true) {
-                    procinfo_cleanup(pt[i]);
-                }
-                // else nothing (we keep the child)
+    for (int i = 2; i < PROCS_MAX; i++) {
+        if (pt[i] != NULL && pt[i]->p_ppid == curproc->p_pid) {
+            // set these child to zombie parent
+            pt[i]->p_ppid = 0;
+            // if child has exited --- destory
+            if (pt[i]->p_exited == true) {
+                procinfo_cleanup(pt[i]);
+                pt[i] = NULL;
             }
+            // else nothing (we keep the child)
         }
-    } 
-
-    // assuming we are (also) a child, get our parent and wake up
-    else {
-        // if our parent is alive --- wakeup our parent
-        if (pt[pinfo->p_ppid]->p_exited == false) {
-            cv_signal(pinfo->p_cv, p_lock);
-        } 
-        // else our parent has exited --- we destory ourself
-        else { 
-            procinfo_cleanup(pt[pid]);
-        }
-        pid = 0;
     }
 
-    pt[pid] = pinfo;
-    curproc->p_pid = pid;
+    // assuming we are (also) a child, get our parent
+    // if our parent is alive --- wakeup our parent
+    if (pinfo->p_ppid != 0) {
+        cv_signal(pinfo->p_cv, p_lock);
+    } else {
+        // else our parent has exited --- we destory ourself
+        procinfo_cleanup(pt[curproc->p_pid]);
+        pt[curproc->p_pid] = NULL;
+    }
+
+    curproc->p_pid = 0;
 
     // release lock
     lock_release(p_lock);
+    
+    // remove current thread from current process 
+    // (that is --- curthread's process field will be set to null, so thread loses track of current process
+    // curthread is still somewhere... we lost track of curthread...
+    proc_remthread(curthread);
+    
+    // so, we put curthread onto kernel process
+    // then call thread_exit() which will move curthread into zombie state to be cleanup 
+    proc_addthread(kproc, curthread);
+
+    proc_destroy(proc);
+
+    thread_exit();
 }
 
 // ===== functions for procinfo =====

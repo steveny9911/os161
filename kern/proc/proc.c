@@ -54,7 +54,6 @@
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
-pid_t p_count;
 
 /*
  * Create a proc structure.
@@ -85,10 +84,6 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	proc->p_filetable = filetable_init(); // create new process table for current process
-
-	p_count++;
-	proc->p_pid = p_count;
-	// proc->p_ppid = kproc->p_pid;
 
 	return proc;
 }
@@ -193,7 +188,6 @@ proc_bootstrap(void)
 
 	kproc->p_pid = 1;
 	kproc->p_ppid = 0;
-	p_count = 1;
 }
 
 /*
