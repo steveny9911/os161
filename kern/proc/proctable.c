@@ -5,6 +5,8 @@
 #include <proc.h>
 #include <synch.h>
 #include <current.h>
+#include <copyinout.h>
+#include <vm.h>
 
 static struct procinfo *pt[PROCS_MAX];
 
@@ -149,11 +151,12 @@ void proctable_exit(int exitstatus) {
 
 // function for wait pid
 int proctable_wait(pid_t waitpid, int *status) {
+    int result;
 
     // validate pid in range
     // make sure current process pid is not waitpid (don't let the process wait for itself)
     if (waitpid < 2 || curproc->p_pid == waitpid) {
-        return EINVAL;
+        return ESRCH;
     }
 
     // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
@@ -180,7 +183,24 @@ int proctable_wait(pid_t waitpid, int *status) {
         cv_wait(pinfo->p_cv, p_lock);
     }
 
-    *status = pt[waitpid]->p_status;
+    // set status when status is valid
+    if (status != NULL) {
+        // validate address of status
+        result = copyout(status, (userptr_t)status, sizeof(int));
+        if (result) {
+            proctable_unassign(waitpid);
+            lock_release(p_lock);
+            return result;
+        }
+
+        // validate alignment of status
+        if ((USERSPACETOP - *status) % sizeof(int) != 0) {
+            return EFAULT;
+        }
+
+        *status = pt[waitpid]->p_status;
+    }
+
 
     proctable_unassign(waitpid);
     lock_release(p_lock);
