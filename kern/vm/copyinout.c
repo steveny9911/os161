@@ -193,10 +193,12 @@ copyout(const void *src, userptr_t userdest, size_t len)
 
 	result = copycheck(userdest, len, &stoplen);
 	if (result) {
+		kprintf("failed with copycheck\n");
 		return result;
 	}
 	if (stoplen != len) {
 		/* Single block, can't legally truncate it. */
+		kprintf("failed with stoplen\n");
 		return EFAULT;
 	}
 
@@ -204,6 +206,7 @@ copyout(const void *src, userptr_t userdest, size_t len)
 
 	result = setjmp(curthread->t_machdep.tm_copyjmp);
 	if (result) {
+		kprintf("failed with setjmp\n");
 		curthread->t_machdep.tm_badfaultfunc = NULL;
 		return EFAULT;
 	}

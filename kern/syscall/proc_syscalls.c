@@ -127,8 +127,10 @@ int sys_execv(const char *program, char **args)
     vaddr_t entrypoint, stackptr;
     int result;
     int ALIGN = 4;
+    char PAD = '\0';
     int argc = 0;
-    int argpos, arglen, argbase;
+    int argpos, arglen;
+    char *argpad;
 
     // malloc argument buffer on heap
     char **argbuf = kmalloc(ARG_MAX * sizeof(char *));
@@ -149,33 +151,41 @@ int sys_execv(const char *program, char **args)
     // pointers are aligned by 4
     for (argc = 0; args[argc] != NULL; argc++) {
         argbuf[argc] = kmalloc(ALIGN);
+
+        // kprintf("argc: %d\n", argc);
         // kprintf("args[argc]: %p\n", &args[argc]);
-        result = copyin((const_userptr_t)&args[argc], (char *)argbuf[argc], ALIGN); // Still not sure position for potiners
+        result = copyin((const_userptr_t)&args[argc], (char *)argbuf[argc], ALIGN); 
         if (result) {
-            kfree(progname);
             return result;
         }
-        // kprintf("argbuf pointer: %p\n", argbuf[argc]);
+        kprintf("arg ptr: %p\n", argbuf[argc]);
     }
     // kprintf("number of argc: %d\n", argc);
 
     // copy argument strings to buffer
-    argpos = argc * ALIGN; // Might have gap between pointers
+    argpos = argc; 
     for (int i = 0; i < argc; i++) {
         arglen = (strlen(args[i])) * sizeof(char);
         argbuf[argpos] = kmalloc(arglen);
-        
         // kprintf("argpos: %d\n", argpos);
-        result = copyin((const_userptr_t)args[i], (char *)argbuf[argpos], arglen);
+
+        argpad = args[i];
+        for (int j = strlen(args[i]); j < ROUNDUP(arglen, 4); j++) {
+            argpad += PAD;
+        }
+        result = copyin((const_userptr_t)argpad, (char *)argbuf[argpos], arglen);
         if (result) {
-            kfree(progname);
             return result;
         }
 
         // kprintf("arg str: %s\n", argbuf[argpos]);
+        // for (int k = 0; k < ROUNDUP(arglen, 4); k++) {
+        //     kprintf("arg char: %c\n", argbuf[argpos][k]);
+        // }
         argpos += ROUNDUP(arglen, 4);
     }
     // kprintf("length of argbuf: %d\n", argpos - ROUNDUP(arglen, 4) / ALIGN);
+    // kprintf(*argbuf);
 
 
     /**
@@ -192,7 +202,7 @@ int sys_execv(const char *program, char **args)
         kfree(progname);
         return result;
     }
-    // kprintf("progname: %s\n", progname);
+    // kprintf("copyin program ok\n");
 
     // open program file
     result = vfs_open(progname, O_RDONLY, 0, &v);
@@ -201,30 +211,31 @@ int sys_execv(const char *program, char **args)
         kfree(progname);
         return result;
     }
+    // kprintf("open program ok\n");
 
     kfree(progname);
 
     // create new address space
-    KASSERT(proc_getas() == NULL);
+    // KASSERT(proc_getas() == NULL);
     as = as_create();
     if (as == NULL) {
         vfs_close(v);
         return ENOMEM;
     }
+    // kprintf("create as ok\n");
 
     struct addrspace * oldas = proc_setas(as); // MODIFIED: save old address space so that we will delete it later
-    // proc_setas(as);
     as_activate();
+    // kprintf("activate as ok\n");
 
     // load executable
     result = load_elf(v, &entrypoint);
     if (result) {
-        // p_addrspace will go away when curproc is destroyed
         vfs_close(v);
-        as_deactivate();
-        as_destroy(as);
+        proc_setas(oldas);
         return result;
     }
+    // kprintf("load executable ok\n");
 
     /* Done with the file now. */
     vfs_close(v);
@@ -232,11 +243,10 @@ int sys_execv(const char *program, char **args)
     /* Define the user stack in the address space */
     result = as_define_stack(as, &stackptr);
     if (result) {
-        // p_addrspace will go away when curproc is destroyed
-        as_deactivate();
-        as_destroy(as);
+        proc_setas(oldas);
         return result;
     }
+    // kprintf("define user stakc ok\n");
 
     /**
      *  ====== END of Copied from runprogram and modified ======
@@ -244,28 +254,28 @@ int sys_execv(const char *program, char **args)
      * 
      */
 
-     // copy arguments to new address space
+    // copy arguments to new address space
     // minus stack pointer with length of buffer
-    argbase = stackptr - argpos;
+    kprintf("stackptr: %04x\n", stackptr);
+    stackptr -= argpos;
+    kprintf("new stackptr: %04x\n", stackptr);
     // update argument pointers to user stack
     for (int i = 0; i < argc; i++) {
-        argbuf[i] += argbase;
+        argbuf[i] += stackptr;
+        kprintf("new arg ptr: %p\n", argbuf[i]);
     }
 
     // copyout arguments to user stack
-    for (int i = 0; i < argpos; i += ALIGN) {
-        result = copyout(argbuf[i], (userptr_t)&stackptr, ALIGN);
-        if (result) { 
-            as_deactivate();
-            as_destroy(as);
-            return result;
-        }
+    result = copyout(argbuf, (userptr_t)&stackptr , argpos);
+    if (result) { 
+        kprintf("failed to copyout argbuf\n");
+        proc_setas(oldas);
+        return result;
     }
+    kprintf("new arg str: %s\n", (char *)&stackptr);
 
     // clean up old address space
-    as_deactivate();
-    as_destroy(as);
-
+    as_destroy(oldas);
 
     /**
      * STEP 4: Return user mode using enter_new_process
