@@ -107,15 +107,26 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 }
 
 int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval) {
-    int result;
-    (void) options;
+    if (options != 0) {
+        return EINVAL;
+    }
 
-    result = proctable_wait(waitpid, status);
+    int result;
+    int exitstatus;
+
+    result = proctable_wait(waitpid, &exitstatus);
     if (result) {
         return result;
     }
 
-    // *status = pt[waitpid]->p_status;
+    // validate address of status
+    if (status != NULL) {
+        result = copyout(&exitstatus, (userptr_t)status, sizeof(int));
+        if (result) {
+            return result;
+        }
+    }
+
     *retval = waitpid;
     return 0;
 }

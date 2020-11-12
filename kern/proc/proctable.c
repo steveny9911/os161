@@ -151,8 +151,6 @@ void proctable_exit(int exitstatus) {
 
 // function for wait pid
 int proctable_wait(pid_t waitpid, int *status) {
-    int result;
-
     // validate pid in range
     // make sure current process pid is not waitpid (don't let the process wait for itself)
     if (waitpid < 2 || curproc->p_pid == waitpid) {
@@ -185,19 +183,6 @@ int proctable_wait(pid_t waitpid, int *status) {
 
     // set status when status is valid
     if (status != NULL) {
-        // validate address of status
-        result = copyout(status, (userptr_t)status, sizeof(int));
-        if (result) {
-            proctable_unassign(waitpid);
-            lock_release(p_lock);
-            return result;
-        }
-
-        // validate alignment of status
-        if ((USERSPACETOP - *status) % sizeof(int) != 0) {
-            return EFAULT;
-        }
-
         *status = pt[waitpid]->p_status;
     }
 
