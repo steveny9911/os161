@@ -81,6 +81,5 @@ int sys_execv(const char *program, char **args);
 int sys_waitpid(pid_t pid, int *status, int options, pid_t *retval);
 void sys__exit(int exitcode);
 
-void free_buffer(char **argbuf, int argc);
 
 #endif /* _SYSCALL_H_ */
