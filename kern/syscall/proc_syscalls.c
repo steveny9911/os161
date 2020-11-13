@@ -85,7 +85,6 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     struct trapframe *child_tf = kmalloc(sizeof(struct trapframe));
     if (child_tf == NULL)
     {
-        // kprintf("failed malloc trapframe\n");
         proc_destroy(child);
         kfree(child_tf);
         return ENOMEM;
@@ -112,6 +111,14 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     return 0;
 }
 
+/**
+ * Wait PID
+ * @param waitpid PID
+ * @param status returned status
+ * @param options options
+ * @param retval actual return - waited PID
+ * @return 0 success, else error code
+ */
 int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval)
 {
     int result;
@@ -134,18 +141,24 @@ int sys_execv(const char *program, char **args)
     vaddr_t entrypoint, stackptr;
     int result;
 
-    // if (program == NULL || !program) {
-    //     return EFAULT;
-    // }
+    if (program == NULL || !program) {
+        return EFAULT;
+    }
 
 
-    // if (args == NULL || (void *)args <= INVAL_PTR || (void *)args >= KERN_PTR) {
-    //     return EFAULT;
-    // }
+    if (args == NULL || (void *)args <= INVAL_PTR || (void *)args >= KERN_PTR) {
+        return EFAULT;
+    }
 
     int argc = 0;
     while (args[argc] != NULL) {
-        // if ((void *)args[argc] <= INVAL_PTR || (void *)args[argc] >= KERN_PTR) {
+        // if ((void *)args[argc] >= INVAL_PTR) {
+        //     kprintf("INVAL_PTR\n");
+        //     return EFAULT;
+        // }
+
+        // if ((void *)args[argc] >= KERN_PTR) {
+        //     kprintf("KERN_PTR\n");
         //     return EFAULT;
         // }
         argc++;
@@ -155,6 +168,7 @@ int sys_execv(const char *program, char **args)
     result = copyinstr((const_userptr_t)program, progname, PATH_MAX, NULL);
     if (result)
     {
+        kprintf("fail to copyin progname\n");
         kfree(progname);
         return result;
     }
