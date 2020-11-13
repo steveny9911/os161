@@ -38,14 +38,11 @@ void proctable_bootstrap(void)
 int proctable_assign(pid_t *pid)
 {
     KASSERT(pt != NULL);
-
-    // lock the table
     lock_acquire(p_lock);
 
-    // increment p_count
     p_count++;
-    // make a new variable to hold p_count ---> as new_pid for this process
     pid_t new_pid = p_count;
+
     // validate new_pid with PROCS_MAX
     if (new_pid > PROCS_MAX) {
         lock_release(p_lock);
@@ -60,10 +57,8 @@ int proctable_assign(pid_t *pid)
     // put into the table (index: new_pid, value: new_pinfo)
     pt[new_pid] = new_pinfo;
 
-    // release lock
     lock_release(p_lock);
 
-    // return new_pid
     *pid = new_pid;
     return 0;
 }
@@ -73,8 +68,6 @@ void proctable_unassign(pid_t this_pid) // need better name
 { 
     KASSERT(this_pid > 2 || this_pid < PROCS_MAX);
 
-    // acquire lock
-    // lock_acquire(p_lock);
     KASSERT(lock_do_i_hold(p_lock) == true);
 
     // get procinfo from table to check validate
@@ -84,18 +77,13 @@ void proctable_unassign(pid_t this_pid) // need better name
     this_pinfo->p_status = -1;    // set exit status to null (or -1)
     this_pinfo->p_exited = true;  // set exited to true
     this_pinfo->p_ppid = 0;       // set ppid to 0
-    // destory procinfo
     procinfo_cleanup(this_pinfo);
 
-    // set value of array to null
     pt[this_pid] = NULL;
-
-    // lock_release(p_lock);
 }
 
-// function to set exit status ---> since some waking up needs to happen
+// function to set exit status
 void proctable_exit(int exitstatus) {
-    // lock proctable
     lock_acquire(p_lock);
 
     // get our parent if any
@@ -130,13 +118,10 @@ void proctable_exit(int exitstatus) {
     }
 
     curproc->p_pid = 0;
-
-    // release lock
     lock_release(p_lock);
     
     // remove current thread from current process 
     // (that is --- curthread's process field will be set to null, so thread loses track of current process
-    // curthread is still somewhere... we lost track of curthread...
     proc_remthread(curthread);
     
     // so, we put curthread onto kernel process
@@ -156,8 +141,6 @@ int proctable_wait(pid_t waitpid, int *status) {
         return ESRCH;
     }
 
-    // options can be 0 https://piazza.com/class/keabkwwe5wwpc?cid=1064
-
     // get procinfo of the waitpid
     lock_acquire(p_lock);
     struct procinfo *pinfo = pt[waitpid];
@@ -175,7 +158,6 @@ int proctable_wait(pid_t waitpid, int *status) {
     // has child exited already?
     // true --- set status, remove child procinfo, return 0
     // false --- cv wait, return 0
-    // check has child exited after waking just to make sure
     if (pinfo->p_exited == false) {
         cv_wait(pinfo->p_cv, p_lock);
     }

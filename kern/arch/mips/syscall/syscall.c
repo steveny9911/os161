@@ -172,7 +172,6 @@ void syscall(struct trapframe *tf)
 
 	case SYS__exit:
 		sys__exit(tf->tf_a0);
-		panic("Should not return form exit");
 		break;
 
 	default:

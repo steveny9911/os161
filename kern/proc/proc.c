@@ -335,18 +335,3 @@ proc_setas(struct addrspace *newas)
 	spinlock_release(&proc->p_lock);
 	return oldas;
 }
-
-struct filetable *proc_getft(void)
-{
-	struct filetable *ft;
-	struct proc *proc = curproc;
-
-	if (proc == NULL) {
-		return NULL;
-	}
-
-	spinlock_acquire(&proc->p_lock);
-	ft = proc->p_filetable;
-	spinlock_release(&proc->p_lock);
-	return ft;
-}
