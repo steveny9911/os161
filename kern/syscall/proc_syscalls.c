@@ -145,25 +145,17 @@ int sys_execv(const char *program, char **args)
         return EFAULT;
     }
 
-
     if (args == NULL || (void *)args <= INVAL_PTR || (void *)args >= KERN_PTR) {
         return EFAULT;
     }
 
+    // count number of arguments
     int argc = 0;
     while (args[argc] != NULL) {
-        // if ((void *)args[argc] >= INVAL_PTR) {
-        //     kprintf("INVAL_PTR\n");
-        //     return EFAULT;
-        // }
-
-        // if ((void *)args[argc] >= KERN_PTR) {
-        //     kprintf("KERN_PTR\n");
-        //     return EFAULT;
-        // }
         argc++;
     }
 
+    // copy in program name
     char *progname = (char *)kmalloc(PATH_MAX);
     result = copyinstr((const_userptr_t)program, progname, PATH_MAX, NULL);
     if (result)
@@ -173,6 +165,7 @@ int sys_execv(const char *program, char **args)
         return result;
     }
 
+    // prepare to copy in argument strings
     char **argbuf = (char **)kmalloc((argc + 1) * sizeof(char *));
     if (argbuf == NULL) {
         kfree(progname);
@@ -181,11 +174,12 @@ int sys_execv(const char *program, char **args)
         return ENOMEM;
     }
 
+    // copy in argument strings
     for (int i = 0; i < argc; i++)
     {
-        size_t arglen = strlen(args[i]) + 1;
-        size_t copylen = arglen * sizeof(char);
-        argbuf[i] = (char *)kmalloc(copylen);
+        size_t arglen = strlen(args[i]) + 1;     // length of each argument plus null terminal
+        size_t copylen = arglen * sizeof(char);  // length to be copied
+        argbuf[i] = (char *)kmalloc(copylen);    // malloc space on kernel
         result = copyin((const_userptr_t)args[i], argbuf[i], copylen);
         if (result)
         {
@@ -196,8 +190,13 @@ int sys_execv(const char *program, char **args)
         }
     }
 
+    // set terminal to null
     argbuf[argc] = NULL;
 
+
+    //
+    // Begin runprogram
+    // 
     result = vfs_open(progname, O_RDONLY, 0, &v);
     if (result)
     {
@@ -219,6 +218,7 @@ int sys_execv(const char *program, char **args)
         return ENOMEM;
     }
 
+    // save old adddress space so we can delete it upon leaving
     struct addrspace *oldas = proc_setas(as);
 
     result = load_elf(v, &entrypoint);
@@ -242,13 +242,20 @@ int sys_execv(const char *program, char **args)
         return result;
     }
 
+    // stackpointer now at top of user space
+    // we can start copy out arguments
+    //
+    // we will keep track of argument address (in user space) using uargs_addr
+    //
     vaddr_t *uargs_addr = (vaddr_t *)kmalloc((argc + 1) * sizeof(vaddr_t));
-    for (int i = 0; i < argc; i++) // this should be flipped
+
+    // copy out argument strings
+    for (int i = 0; i < argc; i++)
     {
-        size_t arglen = strlen(argbuf[i]) + 1;
-        size_t copylen = ROUNDUP(arglen, 4) * sizeof(char);
-        stackptr -= (copylen);
-        result = copyout((void *)argbuf[i], (userptr_t)stackptr, copylen);
+        size_t arglen = strlen(argbuf[i]) + 1;                                 // length of each argument
+        size_t copylen = ROUNDUP(arglen, 4) * sizeof(char);                    // apply alignment for each string
+        stackptr -= (copylen);                                                 // decrement stackpointer for string
+        result = copyout((void *)argbuf[i], (userptr_t)stackptr, copylen);     // copy string onto location of stackpointer
         if (result)
         {
             for (int j = 0; j < argc; j++) kfree(argbuf[j]);
@@ -256,16 +263,22 @@ int sys_execv(const char *program, char **args)
             kfree(uargs_addr);
             return result;
         }
-        uargs_addr[i] = stackptr;
+        uargs_addr[i] = stackptr;  // record this location! this particular string's address
     }
 
     uargs_addr[argc] = (vaddr_t)NULL;
 
+    // copy address of the strings
+    // doing backward since argv[0] is at lowest location, and argv[argc] is highest
+    //
+    // we could have done the same (copying backward) when copying out strings, 
+    // but it doesn't really matter since we kept their addresses in uargs_addr
+    //
     for (int i = argc; i >= 0; i--)
     {
-        size_t copylen = sizeof(vaddr_t); // vaddr_t is u32 --- which is 4 bytes
-        stackptr -= copylen;
-        result = copyout((void *)&uargs_addr[i], (userptr_t)stackptr, copylen);
+        size_t copylen = sizeof(vaddr_t);                                         // vaddr_t is u32 --- which is 4 bytes
+        stackptr -= copylen;                                                      // decrement stackpointer
+        result = copyout((void *)&uargs_addr[i], (userptr_t)stackptr, copylen);   // copy out the address (which we recorded earlier) onto location of the stackpointer
         if (result)
         {
             for (int j = 0; j < argc; j++) kfree(argbuf[j]);

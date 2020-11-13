@@ -79,11 +79,10 @@ void proctable_unassign(pid_t this_pid) // need better name
 
     // get procinfo from table to check validate
     struct procinfo *this_pinfo = pt[this_pid];
-    // --- not null, exited == false, ppid???
     KASSERT(this_pinfo != NULL);
 
-    this_pinfo->p_status = -1;  // set exit status to null (or -1)
-    this_pinfo->p_exited = true; // set exited to true
+    this_pinfo->p_status = -1;    // set exit status to null (or -1)
+    this_pinfo->p_exited = true;  // set exited to true
     this_pinfo->p_ppid = 0;       // set ppid to 0
     // destory procinfo
     procinfo_cleanup(this_pinfo);
@@ -185,7 +184,6 @@ int proctable_wait(pid_t waitpid, int *status) {
     if (status != NULL) {
         *status = pt[waitpid]->p_status;
     }
-
 
     proctable_unassign(waitpid);
     lock_release(p_lock);
