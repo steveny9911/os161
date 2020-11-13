@@ -14,10 +14,6 @@ struct procinfo {
 
 // ===== functions for proc_table =====
 void proctable_bootstrap(void);  // initialize global proctable (called in main.c along with other bootstrap)
-
-// copied from filetable --- will need to change
-// struct proctable *proctable_init(void);
-// void proctable_cleanup(void); --- will never delete the process table since it should always exist as long as OS is running
 int proctable_assign(pid_t *);
 void proctable_unassign(pid_t);
 

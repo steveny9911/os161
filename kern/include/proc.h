@@ -61,9 +61,6 @@ struct proc {
 	/* add more material here as needed */
 	struct filetable *p_filetable;
 	
-	// TODO: need
-	// - pid
-	// - parent pid
 	pid_t p_pid;
 	pid_t p_ppid;
 };
@@ -91,8 +88,6 @@ struct addrspace *proc_getas(void);
 
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
-
-struct filetable *proc_getft(void);
 
 
 #endif /* _PROC_H_ */
