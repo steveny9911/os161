@@ -134,6 +134,7 @@ int sys_waitpid(pid_t waitpid, int *status, int options, pid_t *retval)
     return 0;
 }
 
+
 int sys_execv(const char *program, char **args)
 {
     struct addrspace *as;
@@ -158,9 +159,7 @@ int sys_execv(const char *program, char **args)
     // copy in program name
     char *progname = (char *)kmalloc(PATH_MAX);
     result = copyinstr((const_userptr_t)program, progname, PATH_MAX, NULL);
-    if (result)
-    {
-        kprintf("fail to copyin progname\n");
+    if (result) {
         kfree(progname);
         return result;
     }
@@ -175,14 +174,12 @@ int sys_execv(const char *program, char **args)
     }
 
     // copy in argument strings
-    for (int i = 0; i < argc; i++)
-    {
+    for (int i = 0; i < argc; i++) {
         size_t arglen = strlen(args[i]) + 1;     // length of each argument plus null terminal
         size_t copylen = arglen * sizeof(char);  // length to be copied
         argbuf[i] = (char *)kmalloc(copylen);    // malloc space on kernel
         result = copyin((const_userptr_t)args[i], argbuf[i], copylen);
-        if (result)
-        {
+        if (result) {
             kfree(progname);
             for (int j = 0; j < argc; j++) kfree(argbuf[j]);
             kfree(argbuf);
@@ -198,8 +195,7 @@ int sys_execv(const char *program, char **args)
     // Begin runprogram
     // 
     result = vfs_open(progname, O_RDONLY, 0, &v);
-    if (result)
-    {
+    if (result) {
         for (int j = 0; j < argc; j++) kfree(argbuf[j]);
         kfree(argbuf);
         vfs_close(v);
@@ -210,8 +206,7 @@ int sys_execv(const char *program, char **args)
     kfree(progname);
 
     as = as_create();
-    if (as == NULL)
-    {
+    if (as == NULL) {
         for (int j = 0; j < argc; j++) kfree(argbuf[j]);
         kfree(argbuf);
         vfs_close(v);
@@ -222,8 +217,7 @@ int sys_execv(const char *program, char **args)
     struct addrspace *oldas = proc_setas(as);
 
     result = load_elf(v, &entrypoint);
-    if (result)
-    {
+    if (result) {
         for (int j = 0; j < argc; j++) kfree(argbuf[j]);
         kfree(argbuf);
         vfs_close(v);
@@ -234,8 +228,7 @@ int sys_execv(const char *program, char **args)
     vfs_close(v);
 
     result = as_define_stack(as, &stackptr);
-    if (result)
-    {
+    if (result) {
         for (int j = 0; j < argc; j++) kfree(argbuf[j]);
         kfree(argbuf);
         proc_setas(oldas);
@@ -245,13 +238,12 @@ int sys_execv(const char *program, char **args)
     // stackpointer now at top of user space
     // we can start copy out arguments
     //
-    // we will keep track of argument address (in user space) using uargs_addr
+    // we will keep track of argument address (in user space) using uargsaddr
     //
-    vaddr_t *uargs_addr = (vaddr_t *)kmalloc((argc + 1) * sizeof(vaddr_t));
+    vaddr_t *uargsaddr = (vaddr_t *)kmalloc((argc + 1) * sizeof(vaddr_t));
 
     // copy out argument strings
-    for (int i = 0; i < argc; i++)
-    {
+    for (int i = 0; i < argc; i++) {
         size_t arglen = strlen(argbuf[i]) + 1;                                 // length of each argument
         size_t copylen = ROUNDUP(arglen, 4) * sizeof(char);                    // apply alignment for each string
         stackptr -= (copylen);                                                 // decrement stackpointer for string
@@ -260,30 +252,28 @@ int sys_execv(const char *program, char **args)
         {
             for (int j = 0; j < argc; j++) kfree(argbuf[j]);
             kfree(argbuf);
-            kfree(uargs_addr);
+            kfree(uargsaddr);
             return result;
         }
-        uargs_addr[i] = stackptr;  // record this location! this particular string's address
+        uargsaddr[i] = stackptr;  // record this location! this particular string's address
     }
 
-    uargs_addr[argc] = (vaddr_t)NULL;
+    uargsaddr[argc] = (vaddr_t)NULL;
 
     // copy address of the strings
     // doing backward since argv[0] is at lowest location, and argv[argc] is highest
     //
     // we could have done the same (copying backward) when copying out strings, 
-    // but it doesn't really matter since we kept their addresses in uargs_addr
+    // but it doesn't really matter since we kept their addresses in uargsaddr
     //
-    for (int i = argc; i >= 0; i--)
-    {
+    for (int i = argc; i >= 0; i--) {
         size_t copylen = sizeof(vaddr_t);                                         // vaddr_t is u32 --- which is 4 bytes
         stackptr -= copylen;                                                      // decrement stackpointer
-        result = copyout((void *)&uargs_addr[i], (userptr_t)stackptr, copylen);   // copy out the address (which we recorded earlier) onto location of the stackpointer
-        if (result)
-        {
+        result = copyout((void *)&uargsaddr[i], (userptr_t)stackptr, copylen);   // copy out the address (which we recorded earlier) onto location of the stackpointer
+        if (result) {
             for (int j = 0; j < argc; j++) kfree(argbuf[j]);
             kfree(argbuf);
-            kfree(uargs_addr);
+            kfree(uargsaddr);
             return result;
         }
     }
@@ -293,7 +283,7 @@ int sys_execv(const char *program, char **args)
 
     for (int j = 0; j < argc; j++) kfree(argbuf[j]);
     kfree(argbuf);
-    kfree(uargs_addr);
+    kfree(uargsaddr);
 
     enter_new_process(argc, (userptr_t)stackptr, NULL, stackptr, entrypoint);
 
