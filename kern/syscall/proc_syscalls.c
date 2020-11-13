@@ -12,12 +12,24 @@
 #include <vfs.h>
 #include <addrspace.h>
 
+#define KERN_PTR    ((void *)0x80000000)    /* addr within kernel */
+#define INVAL_PTR   ((void *)0x40000000)    /* addr not part of program */
+
+/**
+ * Get PID
+ * @param retval actual return - PID
+ * @return 0 success
+ */
 int sys_getpid(pid_t *retval)
 {
     *retval = curproc->p_pid;
     return 0;
 }
 
+/**
+ * Exit and set exit status
+ * @param exitcode Exit status code
+ */
 void sys__exit(int exitcode)
 {
     int exitstatus = _MKWAIT_EXIT(exitcode);
@@ -26,30 +38,26 @@ void sys__exit(int exitcode)
 
 /**
  * Called by parent to create a child process
- * 
+ * @param parent_tf Caller trapframe
+ * @param retval actual return - PID
+ * @return 0 success, else error code
  */
 int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 {
     int result;
 
     // create a new child process
-    // kprintf("create runprogram\n");
     struct proc *child = proc_create_runprogram("child");
     if (child == NULL)
     {
-        // kprintf("failed create runprogram\n");
         return ENOMEM;
     }
 
     // assign pid to child and set process table
-    // kprintf("assign pid\n");
-    // kprintf("%d", curproc->p_pid);
     result = proctable_assign(&child->p_pid);
     if (result)
     {
-        // kprintf("failed assign pid\n");
         proc_destroy(child);
-        // kfree(child_tf);
         return result;
     }
 
@@ -58,27 +66,22 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 
     // copy address space
     // as_copy returns a pointer so we do no need to initialize
-    // kprintf("copy address space\n");
     result = as_copy(proc_getas(), &child->p_addrspace);
     if (result)
     {
-        // kprintf("failed address space\n");
         proc_destroy(child);
         return result;
     }
 
     // copy file table
     // filetable_copy returns a pointer so we do no need to initialize
-    // kprintf("copy filetable\n");
     result = filetable_copy(curproc->p_filetable, &child->p_filetable);
     if (result)
     {
-        // kprintf("failed filetable\n");
         proc_destroy(child);
         return result;
     }
 
-    // kprintf("malloc trapframe\n");
     struct trapframe *child_tf = kmalloc(sizeof(struct trapframe));
     if (child_tf == NULL)
     {
@@ -95,14 +98,11 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
     //
     // more in "enter_forked_process"
     //
-    // trapframe_copy(parent_tf, &child_tf);
     *child_tf = *parent_tf;
 
-    // kprintf("begin enter_forked_process\n");
     result = thread_fork("child", child, &enter_forked_process, (void *)child_tf, (unsigned long)NULL);
     if (result)
     {
-        // kprintf("failed enter_forked_process\n");
         proc_destroy(child);
         kfree(child_tf);
         return result;
@@ -134,6 +134,23 @@ int sys_execv(const char *program, char **args)
     vaddr_t entrypoint, stackptr;
     int result;
 
+    // if (program == NULL || !program) {
+    //     return EFAULT;
+    // }
+
+
+    // if (args == NULL || (void *)args <= INVAL_PTR || (void *)args >= KERN_PTR) {
+    //     return EFAULT;
+    // }
+
+    int argc = 0;
+    while (args[argc] != NULL) {
+        // if ((void *)args[argc] <= INVAL_PTR || (void *)args[argc] >= KERN_PTR) {
+        //     return EFAULT;
+        // }
+        argc++;
+    }
+
     char *progname = (char *)kmalloc(PATH_MAX);
     result = copyinstr((const_userptr_t)program, progname, PATH_MAX, NULL);
     if (result)
@@ -141,9 +158,6 @@ int sys_execv(const char *program, char **args)
         kfree(progname);
         return result;
     }
-
-    int argc = 0;
-    for (argc = 0; args[argc] != NULL; argc++) { }
 
     char **argbuf = (char **)kmalloc((argc + 1) * sizeof(char *));
     if (argbuf == NULL) {
@@ -218,12 +232,8 @@ int sys_execv(const char *program, char **args)
     for (int i = 0; i < argc; i++) // this should be flipped
     {
         size_t arglen = strlen(argbuf[i]) + 1;
-        kprintf("arglen: %x\n", arglen);
         size_t copylen = ROUNDUP(arglen, 4) * sizeof(char);
-        kprintf("copylen: %x\n", copylen);
-        kprintf("BEFORE stackptr: %p\n", (void *)stackptr);
         stackptr -= (copylen);
-        kprintf("AFTER stackptr: %p\n", (void *)stackptr);
         result = copyout((void *)argbuf[i], (userptr_t)stackptr, copylen);
         if (result)
         {
@@ -233,7 +243,6 @@ int sys_execv(const char *program, char **args)
             return result;
         }
         uargs_addr[i] = stackptr;
-        kprintf("uargs_addr[%d]: %p\n", i, (void *)uargs_addr[i]);
     }
 
     uargs_addr[argc] = (vaddr_t)NULL;
