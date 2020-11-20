@@ -114,6 +114,35 @@ syscall(struct trapframe *tf)
 		break;
 
 
+	    /* process calls */
+
+	    case SYS_fork:
+		err = sys_fork(tf, &retval);
+		break;
+
+	    case SYS_execv:
+		err = sys_execv(
+			(userptr_t)tf->tf_a0,
+			(userptr_t)tf->tf_a1);
+		break;
+
+	    case SYS__exit:
+		sys__exit(tf->tf_a0);
+		panic("Returning from exit\n");
+
+	    case SYS_waitpid:
+		err = sys_waitpid(
+			tf->tf_a0,
+			(userptr_t)tf->tf_a1,
+			tf->tf_a2,
+			&retval);
+		break;
+
+	    case SYS_getpid:
+		err = sys_getpid(&retval);
+		break;
+
+
 	    /* file calls */
 
 	    case SYS_open:
@@ -235,13 +264,18 @@ syscall(struct trapframe *tf)
 /*
  * Enter user mode for a newly forked process.
  *
- * This function is provided as a reminder. You need to write
- * both it and the code that calls it.
- *
- * Thus, you can trash it and do things another way if you prefer.
+ * Succeed and return 0 into userspace.
  */
 void
 enter_forked_process(struct trapframe *tf)
 {
-	(void)tf;
+	tf->tf_v0 = 0;
+	tf->tf_a3 = 0;
+
+	/*
+	 * Advance the PC.
+	 */
+	tf->tf_epc += 4;
+
+	mips_usermode(tf);
 }

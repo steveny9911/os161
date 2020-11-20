@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008
+ * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
  *	The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,27 +27,48 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _LIMITS_H_
-#define _LIMITS_H_
-
 /*
- * System limits.
+ * Process ID managment.
  */
 
-/* Get the limit values, which are exported to userland with private names. */
-#include <kern/limits.h>
+#ifndef _PID_H_
+#define _PID_H_
 
-/* Provide the real names */
-#define NAME_MAX        __NAME_MAX
-#define PATH_MAX        __PATH_MAX
-#define ARG_MAX         __ARG_MAX
-#define PID_MIN         __PID_MIN
-#define PID_MAX         __PID_MAX
-#define PIPE_BUF        __PIPE_BUF
-#define PROCS_MAX       __PROCS_MAX
-#define NGROUPS_MAX     __NGROUPS_MAX
-#define LOGIN_NAME_MAX  __LOGIN_NAME_MAX
-#define OPEN_MAX        __OPEN_MAX
-#define IOV_MAX         __IOV_MAX
 
-#endif /* _LIMITS_H_ */
+#define INVALID_PID	0	/* nothing has this pid */
+#define KERNEL_PID	1	/* kernel proc has this pid */
+
+/*
+ * Initialize pid management.
+ */
+void pid_bootstrap(void);
+
+/*
+ * Get a pid for a new thread.
+ */
+int pid_alloc(pid_t *retval);
+
+/*
+ * Undo pid_alloc (may blow up if the target has ever run)
+ */
+void pid_unalloc(pid_t targetpid);
+
+/*
+ * Disown a pid (abandon interest in its exit status)
+ */
+void pid_disown(pid_t targetpid);
+
+/*
+ * Set the exit status of the current thread to status.  Wakes up any threads
+ * waiting to read this status, and decrefs the current thread's pid.
+ */
+void pid_setexitstatus(int status);
+
+/*
+ * Causes the current thread to wait for the thread with pid PID to
+ * exit, returning the exit status when it does.
+ */
+int pid_wait(pid_t targetpid, int *status, int flags, pid_t *retpid);
+
+
+#endif /* _PID_H_ */
