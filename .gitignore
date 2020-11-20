@@ -3,3 +3,6 @@
 defs.mk
 .vscode/
 .idea/
+/kern/build
+/userland/
+*.diff
