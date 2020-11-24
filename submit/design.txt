@@ -6,41 +6,55 @@
                 - pages are therefore read and write-able
             - text segment should be read only
                 - load TLB entries with TLBLO_DIRTY (set as OFF)
+                - if application attempts to modify: MMU generates exception (VM_FAULT_READONLY)
             - BUT! load_elf needs TLBLO_DIRTY as ON
                 - so ---> we could add a flag somewhere
+    - runprogram:
+        - load pages on demand (all program's virtual pages are pre-loaded into physical memory now)
+            - keep track of physical memory use
+            - also keep track of page loading
+        - if program tries to access virtual pages: MMU generates TLB fault exception 
 
 - memory managment
     - during bootstrap, kernel calls getppages() -> which calls ram_stealmem()
-    - we want to manage our own memory *after* bootstrap
-    - in vm_bootstrap() ---> we manage the remaining memory
+        - we want to manage our own memory *after* bootstrap
+        - in vm_bootstrap() ---> we manage the remaining memory
+    - free process's pages when it terminates
+        - keep track of free pages
+    - support dynamic memory allocation 
+        - modify alloc_kpages(), free_kpages()
 
 - TLB management
     - global and pid fields are unused (invalidate TLB ONLY when context switch to another thread)
     - TLB fault: 
         - if there is free space: load new entry into TLB
-        - if not ---> TLB eviction:
-            - round-robin TLB replacement policy
+        - if not ---> TLB eviction (round-robin TLB replacement policy)
 
-- write to disk
-
-- page eviction
-
-- synchronization protocol?
+- page management
+    - store virtual pages that are not in physical memory 
+        - use two disks in sys161.conf for swapping
+    - store evicted pages in disk
+        - keep track of chunks that hold these pages
+    - bring a page into memory
+        - maintain a core map (a reverse page table)
+    - write dirty pages to disk
+        - create a thread that examines and write dirty pages
+    - page eviction (LRU?)
 
 - need to implement
     - data structures
         - page table:
             - replace pbase with page table
             - three segments (text, data, stack)
-        - free page map?
+        - core map:
         - address space:
-    - as_define_region
-    - as_prepare_load
-    - as_copy
+            - as_define_region
+            - as_prepare_load
+            - as_copy
 
     - functions/syscalls
         - sbrk():
-        - as_copy(), as_destroy():
+        - alloc_kpages(), free_kpages():
         - tlbshootdown(), tlbshootdown_all():
 
 TLB fault steps:
@@ -53,3 +67,14 @@ TLB fault steps:
             - read from disk
 3. install translation into TLB
 4. resume execution
+
+TLB eviction example:
+int
+tlb_get_rr_victim()
+{
+    int victim;
+    static unsigned int next_victim = 0;
+    victim = next_victim;
+    next_victim = (next_victim + 1) % NUM_TLB;
+    return victim;
+}
