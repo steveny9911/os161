@@ -44,6 +44,15 @@
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
+// free, fixed, clean, dirty...
+enum pagestatus{FREE, FIXED, CLEAN, DIRTY}; 
+
+struct coremap_entry
+{
+    pagestatus status;
+    
+};
+
 
 /* Initialization function */
 void vm_bootstrap(void);

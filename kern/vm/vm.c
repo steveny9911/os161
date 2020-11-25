@@ -66,7 +66,12 @@ static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
+	// get first physical address of free memory
+	// get last physical address of free memory
+	// calculate MAX_PAGE_NUMBER (we are given PAGE_SIZE)
+	// allocate space to store coremap (but! coremap should not be mapped as available memory)
+
+	// need a flag to indicate that vm has already bootstrapped
 }
 
 static
@@ -132,15 +137,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
-		/* We always create pages read-write, so we can't get this */
-
-
-		panic("dumbvm: got VM_FAULT_READONLY\n");
+			// /* We always create pages read-write, so we can't get this */
+			// panic("dumbvm: got VM_FAULT_READONLY\n");
+			return EINVAL;
 	    case VM_FAULT_READ:
 	    case VM_FAULT_WRITE:
-		break;
 	    default:
-		return EINVAL;
+			return EINVAL;
 	}
 
 	if (curproc == NULL) {
@@ -182,8 +185,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
 
+	bool codesegment = false;
+
 	if (faultaddress >= vbase1 && faultaddress < vtop1) {
 		paddr = (faultaddress - vbase1) + as->as_pbase1;
+		codesegment = true;
 	}
 	else if (faultaddress >= vbase2 && faultaddress < vtop2) {
 		paddr = (faultaddress - vbase2) + as->as_pbase2;
@@ -208,17 +214,28 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		}
 		ehi = faultaddress;
 		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+		if (codesegment) {
+			elo &= ~TLBLO_DIRTY;
+		}
 		DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
 		tlb_write(ehi, elo, i);
 		splx(spl);
-
-		// TODO: handle full TLB so that kernel don't panic --- but instead evict / give new entry
 		return 0;
 	}
 
-	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
+	ehi = faultaddress;
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+	if (codesegment) {
+		elo &= ~TLBLO_DIRTY;
+	}
+	DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+	tlb_random(ehi, elo);
 	splx(spl);
-	return EFAULT;
+	return 0;
+
+	// kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
+	// splx(spl);
+	// return EFAULT;
 }
 
 // struct addrspace *
@@ -288,10 +305,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 // 	npages = sz / PAGE_SIZE;
 
-// 	/* We don't use these - all pages are read-write */
-// 	(void)readable;
-// 	(void)writeable;
-// 	(void)executable;
+// 	// /* We don't use these - all pages are read-write */
+// 	// (void)readable;
+// 	// (void)writeable;
+// 	// (void)executable;
 
 // 	if (as->as_vbase1 == 0) {
 // 		as->as_vbase1 = vaddr;
