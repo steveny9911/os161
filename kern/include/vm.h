@@ -45,14 +45,30 @@
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
 // free, fixed, clean, dirty...
-enum pagestatus{FREE, FIXED, CLEAN, DIRTY}; 
+enum lpflag{FREE, FIXED, CLEAN, DIRTY}; 
 
-struct coremap_entry
-{
-    pagestatus status;
-    
+struct vm_object {
+    struct array *vmo_lpages;
+    vaddr_t vmo_base;
+    size_t vmo_lower_redzone;
 };
 
+struct vm_object *vm_objects;
+
+struct lpage {
+    paddr_t lp_paddr;
+    off_t lp_swapaddr;
+    struct spinlock lp_spinlock;
+};
+
+struct lpage *lpages;
+
+struct cm_entry {
+    struct lpage *cm_lpage;
+    // lpflag cm_lpflag; //use bitfield
+};
+
+struct cm_entry *coremap;
 
 /* Initialization function */
 void vm_bootstrap(void);
