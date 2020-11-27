@@ -59,20 +59,66 @@
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
 #define DUMBVM_STACKPAGES    18
 
+static bool BOOT = false;
+static int NUM_PAGES;
+
 /*
  * Wrap ram_stealmem in a spinlock.
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
+/**
+ * Core map
+ */
+#define FREE 0
+#define FIXED 1
+#define CLEAN 2
+#define DIRTY 3
+
+struct cm_entry *coremap;
+static struct spinlock cm_spinlock = SPINLOCK_INITIALIZER;
+
 void
 vm_bootstrap(void)
 {
 	// get first physical address of free memory
+	paddr_t firstaddr = ram_getfirstfree();
+	kprintf("firstaddr: 0x%x\n", firstaddr);
+
 	// get last physical address of free memory
-	// calculate MAX_PAGE_NUMBER (we are given PAGE_SIZE)
+	paddr_t lastaddr = ram_getsize();
+	kprintf("lastaddr: 0x%x\n", lastaddr);
+	
+	// calculate NUM_PAGES (we are given PAGE_SIZE)
+	NUM_PAGES = (lastaddr - firstaddr) / PAGE_SIZE;
+	kprintf("NUM_PAGES: %d\n", NUM_PAGES);
+
 	// allocate space to store coremap (but! coremap should not be mapped as available memory)
+	coremap = (struct cm_entry*)PADDR_TO_KVADDR(firstaddr);
+	kprintf("coremap: %p\n", coremap);
+
+	// get size of coremap we made --- subtract that from actual virtual memory --- coremap should not be mapped as available memory
+	paddr_t freeaddr = firstaddr + NUM_PAGES * sizeof(struct cm_entry);
+	kprintf("freeaddr: 0x%x\n", freeaddr);
+
+	//     | FIXED     | FREE             |
+	//     ^           ^                  ^
+	// firstaddr    freeaddr            lastaddr
+
+	// initialize each coremap entry
+	for (int i = 0; i < NUM_PAGES; i++) {
+		coremap[i].cm_addr = firstaddr + (unsigned long) i * PAGE_SIZE;
+		coremap[i].cm_npages = 0;
+
+		if (i < (int)(freeaddr - firstaddr) / PAGE_SIZE) {
+			coremap[i].cm_flag = DIRTY;
+		} else {
+			coremap[i].cm_flag = FREE;
+		}
+	}
 
 	// need a flag to indicate that vm has already bootstrapped
+	BOOT = true;
 }
 
 static
@@ -80,12 +126,40 @@ paddr_t
 getppages(unsigned long npages)
 {
 	paddr_t addr;
+	if (!BOOT) {
+		spinlock_acquire(&stealmem_lock);
+		addr = ram_stealmem(npages);
+		spinlock_release(&stealmem_lock);
+		return addr;
+	}
 
-	spinlock_acquire(&stealmem_lock);
+	int firstpage = -1;
+	int nfree = 0;
 
-	addr = ram_stealmem(npages);
+	spinlock_acquire(&cm_spinlock);
+	for (int i = 0; i < NUM_PAGES && nfree != (int)npages; i++) {
+		if (coremap[i].cm_flag == FREE) {
+			if (firstpage == -1) {
+				firstpage = i;
+				addr = coremap[i].cm_addr;
+			}
+			nfree++;
+		} else {
+			firstpage = -1;
+			nfree = 0;
+		}
+	}
+	for (int j = firstpage; j < (int)npages && firstpage != -1; j++) {
+		coremap[j].cm_flag = DIRTY;
+		coremap[j].cm_npages = (int)npages;
+	}
 
-	spinlock_release(&stealmem_lock);
+	if (firstpage == -1) {
+		spinlock_release(&cm_spinlock);
+		return 0;
+	}
+
+	spinlock_release(&cm_spinlock);
 	return addr;
 }
 
@@ -93,20 +167,33 @@ getppages(unsigned long npages)
 vaddr_t
 alloc_kpages(unsigned npages)
 {
-	paddr_t pa;
-	pa = getppages(npages);
-	if (pa==0) {
+	paddr_t addr;
+	
+	addr = getppages(npages);
+	if (addr == 0) {
 		return 0;
 	}
-	return PADDR_TO_KVADDR(pa);
+	return PADDR_TO_KVADDR(addr);
 }
 
 void
 free_kpages(vaddr_t addr)
 {
-	/* nothing - leak the memory. */
+	int npages;
 
-	(void)addr;
+	spinlock_acquire(&cm_spinlock);
+	for (int i = 0; i < NUM_PAGES; i++) {
+		if (coremap[i].cm_addr == KVADDR_TO_PADDR(addr)) {
+			npages = coremap[i].cm_npages;
+
+			for (int j = i; j < npages; j++) {
+				coremap[j].cm_flag = FREE;
+				coremap[j].cm_npages = 0;
+			}
+		}
+	}
+
+	spinlock_release(&cm_spinlock);
 }
 
 void
