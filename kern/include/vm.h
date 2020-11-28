@@ -62,6 +62,7 @@ struct lpage {
 struct lpage *lpages;
 struct cm_entry {
     paddr_t cm_addr;
+
     // FREE, FIXED, CLEAN, DIRTY
     // 0     1      2      3
     int cm_flag:2;

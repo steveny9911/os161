@@ -81,25 +81,23 @@ static struct spinlock cm_spinlock = SPINLOCK_INITIALIZER;
 void
 vm_bootstrap(void)
 {
-	// get first physical address of free memory
-	paddr_t firstaddr = ram_getfirstfree();
-	kprintf("firstaddr: 0x%x\n", firstaddr);
-
 	// get last physical address of free memory
 	paddr_t lastaddr = ram_getsize();
-	kprintf("lastaddr: 0x%x\n", lastaddr);
+
+	// get first physical address of free memory
+	paddr_t firstaddr = ram_getfirstfree();
 	
 	// calculate NUM_PAGES (we are given PAGE_SIZE)
 	NUM_PAGES = (lastaddr - firstaddr) / PAGE_SIZE;
-	kprintf("NUM_PAGES: %d\n", NUM_PAGES);
 
 	// allocate space to store coremap (but! coremap should not be mapped as available memory)
 	coremap = (struct cm_entry*)PADDR_TO_KVADDR(firstaddr);
-	kprintf("coremap: %p\n", coremap);
 
 	// get size of coremap we made --- subtract that from actual virtual memory --- coremap should not be mapped as available memory
-	paddr_t freeaddr = firstaddr + NUM_PAGES * sizeof(struct cm_entry);
-	kprintf("freeaddr: 0x%x\n", freeaddr);
+	paddr_t freeaddr = firstaddr + ROUNDUP(NUM_PAGES * sizeof(struct cm_entry), PAGE_SIZE);
+
+	kprintf("firstaddr: %x\t freeaddr: %x\t lastaddr: %x\n", firstaddr, freeaddr, lastaddr);
+	kprintf("NUM_PAGES: %d\n\n", NUM_PAGES);
 
 	//     | FIXED     | FREE             |
 	//     ^           ^                  ^
@@ -107,11 +105,11 @@ vm_bootstrap(void)
 
 	// initialize each coremap entry
 	for (int i = 0; i < NUM_PAGES; i++) {
-		coremap[i].cm_addr = firstaddr + (unsigned long) i * PAGE_SIZE;
+		coremap[i].cm_addr = freeaddr + (unsigned long) i * PAGE_SIZE;
 		coremap[i].cm_npages = 0;
 
 		if (i < (int)(freeaddr - firstaddr) / PAGE_SIZE) {
-			coremap[i].cm_flag = DIRTY;
+			coremap[i].cm_flag = FIXED;
 		} else {
 			coremap[i].cm_flag = FREE;
 		}
@@ -125,6 +123,7 @@ static
 paddr_t
 getppages(unsigned long npages)
 {
+	// kprintf("=== enter getppages npages: %lu ===\n", npages);
 	paddr_t addr;
 	if (!BOOT) {
 		spinlock_acquire(&stealmem_lock);
@@ -149,14 +148,15 @@ getppages(unsigned long npages)
 			nfree = 0;
 		}
 	}
-	for (int j = firstpage; j < (int)npages && firstpage != -1; j++) {
-		coremap[j].cm_flag = DIRTY;
-		coremap[j].cm_npages = (int)npages;
-	}
 
 	if (firstpage == -1) {
 		spinlock_release(&cm_spinlock);
 		return 0;
+	}
+
+	for (int j = firstpage; j < firstpage + (int)npages; j++) {
+		coremap[j].cm_flag = DIRTY;
+		coremap[j].cm_npages = (int)npages;
 	}
 
 	spinlock_release(&cm_spinlock);
@@ -320,191 +320,5 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
 	tlb_random(ehi, elo);
 	splx(spl);
-	return 0;
-}
-
-struct addrspace *
-as_create(void)
-{
-	struct addrspace *as = kmalloc(sizeof(struct addrspace));
-	if (as==NULL) {
-		return NULL;
-	}
-
-	as->as_vbase1 = 0;
-	as->as_pbase1 = 0;
-	as->as_npages1 = 0;
-	as->as_vbase2 = 0;
-	as->as_pbase2 = 0;
-	as->as_npages2 = 0;
-	as->as_stackpbase = 0;
-
-	as->elf_loaded = false;
-
-	return as;
-}
-
-void
-as_destroy(struct addrspace *as)
-{
-	kfree(as);
-}
-
-void
-as_activate(void)
-{
-	int i, spl;
-	struct addrspace *as;
-
-	as = proc_getas();
-	if (as == NULL) {
-		return;
-	}
-
-	/* Disable interrupts on this CPU while frobbing the TLB. */
-	spl = splhigh();
-
-	for (i=0; i<NUM_TLB; i++) {
-		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
-	}
-
-	splx(spl);
-}
-
-void
-as_deactivate(void)
-{
-	/* nothing */
-}
-
-int
-as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
-		 int readable, int writeable, int executable)
-{
-	size_t npages;
-
-	/* Align the region. First, the base... */
-	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
-	vaddr &= PAGE_FRAME;
-
-	/* ...and now the length. */
-	sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
-
-	npages = sz / PAGE_SIZE;
-
-	/* We don't use these - all pages are read-write */
-	(void)readable;
-	(void)writeable;
-	(void)executable;
-
-	if (as->as_vbase1 == 0) {
-		as->as_vbase1 = vaddr;
-		as->as_npages1 = npages;
-		return 0;
-	}
-
-	if (as->as_vbase2 == 0) {
-		as->as_vbase2 = vaddr;
-		as->as_npages2 = npages;
-		return 0;
-	}
-
-	/*
-	 * Support for more than two regions is not available.
-	 */
-	kprintf("dumbvm: Warning: too many regions\n");
-	return ENOSYS;
-}
-
-static
-void
-as_zero_region(paddr_t paddr, unsigned npages)
-{
-	bzero((void *)PADDR_TO_KVADDR(paddr), npages * PAGE_SIZE);
-}
-
-int
-as_prepare_load(struct addrspace *as)
-{
-	KASSERT(as->as_pbase1 == 0);
-	KASSERT(as->as_pbase2 == 0);
-	KASSERT(as->as_stackpbase == 0);
-
-	as->as_pbase1 = getppages(as->as_npages1);
-	if (as->as_pbase1 == 0) {
-		return ENOMEM;
-	}
-
-	as->as_pbase2 = getppages(as->as_npages2);
-	if (as->as_pbase2 == 0) {
-		return ENOMEM;
-	}
-
-	as->as_stackpbase = getppages(DUMBVM_STACKPAGES);
-	if (as->as_stackpbase == 0) {
-		return ENOMEM;
-	}
-
-	as_zero_region(as->as_pbase1, as->as_npages1);
-	as_zero_region(as->as_pbase2, as->as_npages2);
-	as_zero_region(as->as_stackpbase, DUMBVM_STACKPAGES);
-
-	return 0;
-}
-
-int
-as_complete_load(struct addrspace *as)
-{
-	(void)as;
-	return 0;
-}
-
-int
-as_define_stack(struct addrspace *as, vaddr_t *stackptr)
-{
-	KASSERT(as->as_stackpbase != 0);
-
-	*stackptr = USERSTACK;
-	return 0;
-}
-
-int
-as_copy(struct addrspace *old, struct addrspace **ret)
-{
-	struct addrspace *new;
-
-	new = as_create();
-	if (new==NULL) {
-		return ENOMEM;
-	}
-
-	new->as_vbase1 = old->as_vbase1;
-	new->as_npages1 = old->as_npages1;
-	new->as_vbase2 = old->as_vbase2;
-	new->as_npages2 = old->as_npages2;
-
-	/* (Mis)use as_prepare_load to allocate some physical memory. */
-	if (as_prepare_load(new)) {
-		as_destroy(new);
-		return ENOMEM;
-	}
-
-	KASSERT(new->as_pbase1 != 0);
-	KASSERT(new->as_pbase2 != 0);
-	KASSERT(new->as_stackpbase != 0);
-
-	memmove((void *)PADDR_TO_KVADDR(new->as_pbase1),
-		(const void *)PADDR_TO_KVADDR(old->as_pbase1),
-		old->as_npages1*PAGE_SIZE);
-
-	memmove((void *)PADDR_TO_KVADDR(new->as_pbase2),
-		(const void *)PADDR_TO_KVADDR(old->as_pbase2),
-		old->as_npages2*PAGE_SIZE);
-
-	memmove((void *)PADDR_TO_KVADDR(new->as_stackpbase),
-		(const void *)PADDR_TO_KVADDR(old->as_stackpbase),
-		DUMBVM_STACKPAGES*PAGE_SIZE);
-
-	*ret = new;
 	return 0;
 }
