@@ -135,7 +135,7 @@ getppages(unsigned long npages)
 	int nfree = 0;
 
 	spinlock_acquire(&cm_spinlock);
-	
+
 	for (int i = 0; i < NUM_PAGES && nfree != (int)npages; i++) {
 		if (coremap[i].cm_flag == FREE) {
 			if (firstpage == -1) {
@@ -173,6 +173,12 @@ alloc_kpages(unsigned npages)
 	if (addr == 0) {
 		return 0;
 	}
+
+	for (int i = 0; i < NUM_PAGES; i++) {
+		if (coremap[i].cm_paddr == addr) {
+			coremap[i].cm_vaddr = PADDR_TO_KVADDR(addr);
+		}
+	}
 	return PADDR_TO_KVADDR(addr);
 }
 
@@ -182,7 +188,6 @@ free_kpages(vaddr_t addr)
 	int npages;
 
 	spinlock_acquire(&cm_spinlock);
-
 	for (int i = 0; i < NUM_PAGES; i++) {
 		if (coremap[i].cm_paddr == KVADDR_TO_PADDR(addr)) {
 			npages = coremap[i].cm_npages;
@@ -193,7 +198,6 @@ free_kpages(vaddr_t addr)
 			}
 		}
 	}
-
 	spinlock_release(&cm_spinlock);
 }
 
@@ -254,23 +258,26 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 	/* Assert that the address space has been set up properly. */
-	KASSERT(as->as_vbase1 != 0);
-	KASSERT(as->as_pbase1 != 0);
-	KASSERT(as->as_npages1 != 0);
-	KASSERT(as->as_vbase2 != 0);
-	KASSERT(as->as_pbase2 != 0);
-	KASSERT(as->as_npages2 != 0);
-	KASSERT(as->as_stackpbase != 0);
-	KASSERT((as->as_vbase1 & PAGE_FRAME) == as->as_vbase1);
-	KASSERT((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
-	KASSERT((as->as_vbase2 & PAGE_FRAME) == as->as_vbase2);
-	KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
-	KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
+	KASSERT(as->as_vcodebase != 0);
+	KASSERT(as->as_pcodebase != NULL);
+	KASSERT(as->as_codepages != 0);
+	
+	KASSERT(as->as_vdatabase != 0);
+	KASSERT(as->as_pdatabase != NULL);
+	KASSERT(as->as_datapages != 0);
+	
+	KASSERT(as->as_stackpbase != NULL);
+	
+	KASSERT((as->as_vcodebase & PAGE_FRAME) == as->as_vcodebase);
+	
+	KASSERT((as->as_vdatabase & PAGE_FRAME) == as->as_vdatabase);
 
-	vbase1 = as->as_vbase1;
-	vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
-	vbase2 = as->as_vbase2;
-	vtop2 = vbase2 + as->as_npages2 * PAGE_SIZE;
+	vbase1 = as->as_vcodebase;
+	vtop1 = vbase1 + as->as_codepages * PAGE_SIZE;
+
+	vbase2 = as->as_vdatabase;
+	vtop2 = vbase2 + as->as_datapages * PAGE_SIZE;
+
 	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
 
@@ -278,14 +285,14 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	bool elf_loaded = as->elf_loaded;
 
 	if (faultaddress >= vbase1 && faultaddress < vtop1) {
-		paddr = (faultaddress - vbase1) + as->as_pbase1;
+		paddr = (faultaddress - vbase1) + as->as_pcodebase[0];
 		codesegment = true;
 	}
 	else if (faultaddress >= vbase2 && faultaddress < vtop2) {
-		paddr = (faultaddress - vbase2) + as->as_pbase2;
+		paddr = (faultaddress - vbase2) + as->as_pdatabase[0];
 	}
 	else if (faultaddress >= stackbase && faultaddress < stacktop) {
-		paddr = (faultaddress - stackbase) + as->as_stackpbase;
+		paddr = (faultaddress - stackbase) + as->as_stackpbase[0];
 	}
 	else {
 		return EFAULT;
@@ -332,13 +339,15 @@ as_create(void)
 		return NULL;
 	}
 
-	as->as_vbase1 = 0;
-	as->as_pbase1 = 0;
-	as->as_npages1 = 0;
-	as->as_vbase2 = 0;
-	as->as_pbase2 = 0;
-	as->as_npages2 = 0;
-	as->as_stackpbase = 0;
+	as->as_vcodebase = 0;
+	as->as_pcodebase = NULL;
+	as->as_codepages = 0;
+
+	as->as_vdatabase = 0;
+	as->as_pdatabase = NULL;
+	as->as_datapages = 0;
+	
+	as->as_stackpbase = NULL;
 
 	as->elf_loaded = false;
 
@@ -348,6 +357,18 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+	for (size_t i = 0; i < as->as_codepages; i++) {
+		free_kpages(PADDR_TO_KVADDR(as->as_pcodebase[i]));
+	}
+
+	for (size_t i = 0; i < as->as_datapages; i++) {
+		free_kpages(PADDR_TO_KVADDR(as->as_pdatabase[i]));
+	}
+
+	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
+		free_kpages(PADDR_TO_KVADDR(as->as_stackpbase[i]));
+	}
+
 	kfree(as);
 }
 
@@ -398,15 +419,17 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	(void)writeable;
 	(void)executable;
 
-	if (as->as_vbase1 == 0) {
-		as->as_vbase1 = vaddr;
-		as->as_npages1 = npages;
+	if (as->as_vcodebase == 0) {
+		as->as_vcodebase = vaddr;
+		as->as_codepages = npages;
+		as->as_pcodebase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
 
-	if (as->as_vbase2 == 0) {
-		as->as_vbase2 = vaddr;
-		as->as_npages2 = npages;
+	if (as->as_vdatabase == 0) {
+		as->as_vdatabase = vaddr;
+		as->as_datapages = npages;
+		as->as_pdatabase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
 
@@ -427,28 +450,20 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
-	KASSERT(as->as_pbase1 == 0);
-	KASSERT(as->as_pbase2 == 0);
-	KASSERT(as->as_stackpbase == 0);
-
-	as->as_pbase1 = getppages(as->as_npages1);
-	if (as->as_pbase1 == 0) {
-		return ENOMEM;
+	for (size_t i = 0; i < as->as_codepages; i++) {
+		as->as_pcodebase[i] = getppages(1);
+		as_zero_region(as->as_pcodebase[i], 1);
 	}
 
-	as->as_pbase2 = getppages(as->as_npages2);
-	if (as->as_pbase2 == 0) {
-		return ENOMEM;
+	for (size_t i = 0; i < as->as_datapages; i++) {
+		as->as_pdatabase[i] = getppages(1);
+		as_zero_region(as->as_pcodebase[i], 1);
 	}
 
-	as->as_stackpbase = getppages(DUMBVM_STACKPAGES);
-	if (as->as_stackpbase == 0) {
-		return ENOMEM;
+	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
+		as->as_stackpbase[i] = getppages(1);
+		as_zero_region(as->as_stackpbase[i], 1);
 	}
-
-	as_zero_region(as->as_pbase1, as->as_npages1);
-	as_zero_region(as->as_pbase2, as->as_npages2);
-	as_zero_region(as->as_stackpbase, DUMBVM_STACKPAGES);
 
 	return 0;
 }
@@ -479,10 +494,15 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
-	new->as_vbase1 = old->as_vbase1;
-	new->as_npages1 = old->as_npages1;
-	new->as_vbase2 = old->as_vbase2;
-	new->as_npages2 = old->as_npages2;
+	new->as_vcodebase = old->as_vcodebase;
+	new->as_codepages = old->as_codepages;
+
+	new->as_vdatabase = old->as_vdatabase;
+	new->as_datapages = old->as_datapages;
+
+	new->as_pcodebase = kmalloc(sizeof(paddr_t) * old->as_codepages);
+	new->as_pdatabase = kmalloc(sizeof(paddr_t) * old->as_datapages);
+	new->as_stackpbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
 
 	/* (Mis)use as_prepare_load to allocate some physical memory. */
 	if (as_prepare_load(new)) {
@@ -490,21 +510,27 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
-	KASSERT(new->as_pbase1 != 0);
-	KASSERT(new->as_pbase2 != 0);
-	KASSERT(new->as_stackpbase != 0);
+	KASSERT(new->as_pcodebase != NULL);
+	KASSERT(new->as_pdatabase != NULL);
+	KASSERT(new->as_stackpbase != NULL);
 
-	memmove((void *)PADDR_TO_KVADDR(new->as_pbase1),
-		(const void *)PADDR_TO_KVADDR(old->as_pbase1),
-		old->as_npages1*PAGE_SIZE);
+	for (size_t i = 0; i < new->as_codepages; i++) {
+		memmove((void *)PADDR_TO_KVADDR(new->as_pcodebase[i]),
+				(const void *)PADDR_TO_KVADDR(old->as_pcodebase[i]),
+				PAGE_SIZE);
+	}
 
-	memmove((void *)PADDR_TO_KVADDR(new->as_pbase2),
-		(const void *)PADDR_TO_KVADDR(old->as_pbase2),
-		old->as_npages2*PAGE_SIZE);
+	for (size_t i = 0; i < new->as_datapages; i++) {
+		memmove((void *)PADDR_TO_KVADDR(new->as_pdatabase[i]),
+				(const void *)PADDR_TO_KVADDR(old->as_pdatabase[i]),
+				PAGE_SIZE);
+	}
 
-	memmove((void *)PADDR_TO_KVADDR(new->as_stackpbase),
-		(const void *)PADDR_TO_KVADDR(old->as_stackpbase),
-		DUMBVM_STACKPAGES*PAGE_SIZE);
+	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
+		memmove((void *)PADDR_TO_KVADDR(new->as_stackpbase[i]),
+				(const void *)PADDR_TO_KVADDR(old->as_stackpbase[i]),
+				PAGE_SIZE);
+	}
 
 	*ret = new;
 	return 0;

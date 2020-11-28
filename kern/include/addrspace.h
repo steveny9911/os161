@@ -50,22 +50,24 @@ struct vnode;
 
 struct addrspace {
 #if OPT_DUMBVM
-        vaddr_t as_vbase1;
-        paddr_t as_pbase1;
-        size_t as_npages1;
-        vaddr_t as_vbase2;
-        paddr_t as_pbase2;
-        size_t as_npages2;
+        vaddr_t as_vcodebase;
+        paddr_t as_pcodebase;
+        size_t as_codepages;
+        vaddr_t as_vdatabase;
+        paddr_t as_pdatabase;
+        size_t as_datapages;
         paddr_t as_stackpbase;
 #else
         /* Put stuff here for your VM system */
-        vaddr_t as_vbase1;
-        paddr_t as_pbase1;
-        size_t as_npages1;
-        vaddr_t as_vbase2;
-        paddr_t as_pbase2;
-        size_t as_npages2;
-        paddr_t as_stackpbase;
+        vaddr_t as_vcodebase;
+        paddr_t *as_pcodebase;
+        size_t as_codepages;
+
+        vaddr_t as_vdatabase;
+        paddr_t *as_pdatabase;
+        size_t as_datapages;
+        
+        paddr_t *as_stackpbase;
         bool elf_loaded;
 #endif
 };
