@@ -44,29 +44,13 @@
 #define VM_FAULT_READ        0    /* A read was attempted */
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
-
-struct vm_object {
-    struct array *vmo_lpages;
-    vaddr_t vmo_base;
-    size_t vmo_lower_redzone;
-};
-
-struct vm_object *vm_objects;
-
-struct lpage {
-    off_t lp_swapaddr;
-    struct spinlock lp_spinlock;
-
-};
-
-struct lpage *lpages;
 struct cm_entry {
-    paddr_t cm_addr;
-
+    paddr_t cm_paddr;
+    vaddr_t cm_vaddr;
     // FREE, FIXED, CLEAN, DIRTY
     // 0     1      2      3
     int cm_flag:2;
-    int cm_npages:3;  // how many pages are contiguous?
+    size_t cm_npages:3;  // how many pages are contiguous?
 };
 
 struct cm_entry *coremap;
