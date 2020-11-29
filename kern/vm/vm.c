@@ -217,7 +217,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
+	vaddr_t codebase, codetop, database, datatop, stackbase, stacktop;
 	paddr_t paddr;
 	int i;
 	uint32_t ehi, elo;
@@ -272,11 +272,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	
 	KASSERT((as->as_vdatabase & PAGE_FRAME) == as->as_vdatabase);
 
-	vbase1 = as->as_vcodebase;
-	vtop1 = vbase1 + as->as_codepages * PAGE_SIZE;
+	codebase = as->as_vcodebase;
+	codetop = codebase + as->as_codepages * PAGE_SIZE;
 
-	vbase2 = as->as_vdatabase;
-	vtop2 = vbase2 + as->as_datapages * PAGE_SIZE;
+	database = as->as_vdatabase;
+	datatop = database + as->as_datapages * PAGE_SIZE;
 
 	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
@@ -284,12 +284,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	bool codesegment = false;
 	bool elf_loaded = as->elf_loaded;
 
-	if (faultaddress >= vbase1 && faultaddress < vtop1) {
-		paddr = (faultaddress - vbase1) + as->as_pcodebase[0];
+	if (faultaddress >= codebase && faultaddress < codetop) {
+		paddr = (faultaddress - codebase) + as->as_pcodebase[0];
 		codesegment = true;
 	}
-	else if (faultaddress >= vbase2 && faultaddress < vtop2) {
-		paddr = (faultaddress - vbase2) + as->as_pdatabase[0];
+	else if (faultaddress >= database && faultaddress < datatop) {
+		paddr = (faultaddress - database) + as->as_pdatabase[0];
 	}
 	else if (faultaddress >= stackbase && faultaddress < stacktop) {
 		paddr = (faultaddress - stackbase) + as->as_stackpbase[0];
