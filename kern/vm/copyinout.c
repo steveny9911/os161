@@ -161,6 +161,7 @@ copyin(const_userptr_t usersrc, void *dest, size_t len)
 	}
 	if (stoplen != len) {
 		/* Single block, can't legally truncate it. */
+		kprintf("copyin stoplen != len\n");
 		return EFAULT;
 	}
 
@@ -168,6 +169,7 @@ copyin(const_userptr_t usersrc, void *dest, size_t len)
 
 	result = setjmp(curthread->t_machdep.tm_copyjmp);
 	if (result) {
+		kprintf("copyin setjmp failed\n");
 		curthread->t_machdep.tm_badfaultfunc = NULL;
 		return EFAULT;
 	}
@@ -193,10 +195,14 @@ copyout(const void *src, userptr_t userdest, size_t len)
 
 	result = copycheck(userdest, len, &stoplen);
 	if (result) {
+		kprintf("copycheck failed\n");
 		return result;
 	}
 	if (stoplen != len) {
 		/* Single block, can't legally truncate it. */
+		kprintf("copyout stoplen != len\n");
+		kprintf("stoplen: %d\n", stoplen);
+		kprintf("len: %d\n", len);
 		return EFAULT;
 	}
 
@@ -204,6 +210,7 @@ copyout(const void *src, userptr_t userdest, size_t len)
 
 	result = setjmp(curthread->t_machdep.tm_copyjmp);
 	if (result) {
+		kprintf("copyout stoplen != len\n");
 		curthread->t_machdep.tm_badfaultfunc = NULL;
 		return EFAULT;
 	}

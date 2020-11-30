@@ -365,6 +365,7 @@ loadexec(char *path, vaddr_t *entrypoint, vaddr_t *stackptr)
 	 */
 	result = load_elf(v, entrypoint);
 	if (result) {
+		kprintf("load_elf failed\n");
 		vfs_close(v);
 		proc_setas(oldvm);
 		as_activate();

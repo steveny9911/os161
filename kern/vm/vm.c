@@ -150,6 +150,7 @@ getppages(unsigned long npages)
 	}
 
 	if (firstpage == -1) {
+		// kprintf("no enough free pages\n");
 		spinlock_release(&cm_spinlock);
 		return 0;
 	}
@@ -159,6 +160,7 @@ getppages(unsigned long npages)
 		coremap[j].cm_npages = (int)npages;
 	}
 
+	// kprintf("address of first page: %x\n", addr);
 	spinlock_release(&cm_spinlock);
 	return addr;
 }
@@ -174,11 +176,6 @@ alloc_kpages(unsigned npages)
 		return 0;
 	}
 
-	for (int i = 0; i < NUM_PAGES; i++) {
-		if (coremap[i].cm_paddr == addr) {
-			coremap[i].cm_vaddr = PADDR_TO_KVADDR(addr);
-		}
-	}
 	return PADDR_TO_KVADDR(addr);
 }
 
@@ -336,6 +333,7 @@ as_create(void)
 {
 	struct addrspace *as = kmalloc(sizeof(struct addrspace));
 	if (as==NULL) {
+		kprintf("as_create kmalloc failed\n");
 		return NULL;
 	}
 
@@ -419,19 +417,24 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	(void)writeable;
 	(void)executable;
 
+	kprintf("codebase malloc\n");
 	if (as->as_vcodebase == 0) {
 		as->as_vcodebase = vaddr;
 		as->as_codepages = npages;
 		as->as_pcodebase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
+	kprintf("code malloc done\n");
 
+	kprintf("database malloc\n");
 	if (as->as_vdatabase == 0) {
+		kprintf("--- database malloc ---\n");
 		as->as_vdatabase = vaddr;
 		as->as_datapages = npages;
 		as->as_pdatabase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
+	kprintf("data malloc done\n");
 
 	/*
 	 * Support for more than two regions is not available.
@@ -460,8 +463,19 @@ as_prepare_load(struct addrspace *as)
 		as_zero_region(as->as_pcodebase[i], 1);
 	}
 
+	kprintf("--- stackpbase malloc ---\n");
+	as->as_stackpbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
+	if (as->as_stackpbase == NULL) {
+		kprintf("stackpbase malloc out of memory\n");
+	}
+
 	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
-		as->as_stackpbase[i] = getppages(1);
+		paddr_t paddr = getppages(1);
+		if (paddr == 0) {
+			kprintf("getppages error\n");
+		}
+		kprintf("stack address: %x\n", as->as_stackpbase[i]);
+		as->as_stackpbase[i] = paddr;
 		as_zero_region(as->as_stackpbase[i], 1);
 	}
 
