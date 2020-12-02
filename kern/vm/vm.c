@@ -236,9 +236,9 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 			return EFAULT;
 		case VM_FAULT_READ:
 		case VM_FAULT_WRITE:
-		break;
+			break;
 		default:
-		return EINVAL;
+			return EINVAL;
 	}
 
 	if (curproc == NULL) {
@@ -433,7 +433,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 	DEBUG(DB_EXEC, "codebase malloc\n");
 	if (as->as_vcodebase == 0) {
-		// kprintf("vcodebase: %x, codepages: %x\n", vaddr, npages);
+		DEBUG(DB_VM, "vcodebase: %x, codepages: %x\n", vaddr, npages);
 		as->as_vcodebase = vaddr;
 		as->as_codepages = npages;
 		as->as_pcodebase = kmalloc(sizeof(paddr_t) * npages);
@@ -481,6 +481,7 @@ as_prepare_load(struct addrspace *as)
 	as->as_stackpbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
 	if (as->as_stackpbase == NULL) {
 		kprintf("stackpbase malloc out of memory\n");
+		return ENOMEM;
 	}
 
 	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
