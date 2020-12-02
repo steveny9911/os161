@@ -95,8 +95,8 @@ vm_bootstrap(void)
 	// get size of coremap we made --- subtract that from actual virtual memory --- coremap should not be mapped as available memory
 	paddr_t freeaddr = firstaddr + ROUNDUP(NUM_PAGES * sizeof(struct cm_entry), PAGE_SIZE);
 
-	kprintf("firstaddr: %x\t freeaddr: %x\t lastaddr: %x\n", firstaddr, freeaddr, lastaddr);
-	kprintf("NUM_PAGES: %d\n\n", NUM_PAGES);
+	DEBUG(DB_EXEC, "firstaddr: %x\t freeaddr: %x\t lastaddr: %x\n", firstaddr, freeaddr, lastaddr);
+	DEBUG(DB_EXEC, "NUM_PAGES: %d\n\n", NUM_PAGES);
 
 	//     | FIXED     | FREE             |
 	//     ^           ^                  ^
@@ -150,7 +150,7 @@ getppages(unsigned long npages)
 	}
 
 	if (firstpage == -1) {
-		// kprintf("no enough free pages\n");
+		DEBUG(DB_EXEC, "no enough free pages\n");
 		spinlock_release(&cm_spinlock);
 		return 0;
 	}
@@ -160,7 +160,7 @@ getppages(unsigned long npages)
 		coremap[j].cm_npages = (int)npages;
 	}
 
-	// kprintf("address of first page: %x\n", addr);
+	DEBUG(DB_EXEC, "address of first page: %x\n", addr);
 	spinlock_release(&cm_spinlock);
 	return addr;
 }
@@ -214,6 +214,8 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
+	DEBUG(DB_EXEC, "===enter vm_fault===\n");
+
 	vaddr_t codebase, codetop, database, datatop, stackbase, stacktop;
 	paddr_t paddr;
 	int i;
@@ -223,17 +225,20 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	faultaddress &= PAGE_FRAME;
 
-	DEBUG(DB_VM, "dumbvm: fault: 0x%x\n", faultaddress);
+	DEBUG(DB_EXEC, "fault: 0x%x\n", faultaddress);
 
+	DEBUG(DB_EXEC, "faulttype: %d\n", faulttype);
 	switch (faulttype) {
-	    case VM_FAULT_READONLY:
+		// kprintf("enter faulttype switch\n");
+		case VM_FAULT_READONLY:
 			// /* We always create pages read-write, so we can't get this */
 			// panic("dumbvm: got VM_FAULT_READONLY\n");
 			return EFAULT;
-	    case VM_FAULT_READ:
-	    case VM_FAULT_WRITE:
-	    default:
-			return EINVAL;
+		case VM_FAULT_READ:
+		case VM_FAULT_WRITE:
+		break;
+		default:
+		return EINVAL;
 	}
 
 	if (curproc == NULL) {
@@ -282,14 +287,23 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	bool elf_loaded = as->elf_loaded;
 
 	if (faultaddress >= codebase && faultaddress < codetop) {
-		paddr = (faultaddress - codebase) + as->as_pcodebase[0];
+		DEBUG(DB_EXEC, "===fault at codebase===\n");
+		int pcodepage = (faultaddress - codebase) / PAGE_SIZE;
+		DEBUG(DB_EXEC, "pcodepage: %d\n", pcodepage);
+		paddr = as->as_pcodebase[pcodepage];
 		codesegment = true;
 	}
 	else if (faultaddress >= database && faultaddress < datatop) {
-		paddr = (faultaddress - database) + as->as_pdatabase[0];
+		DEBUG(DB_EXEC, "===fault at database===\n");
+		int pdatapage = (faultaddress - database) / PAGE_SIZE;
+		DEBUG(DB_EXEC, "pdatapage: %d\n", pdatapage);
+		paddr = as->as_pdatabase[pdatapage];
 	}
 	else if (faultaddress >= stackbase && faultaddress < stacktop) {
-		paddr = (faultaddress - stackbase) + as->as_stackpbase[0];
+		DEBUG(DB_EXEC, "===fault at stackbase===\n");
+		int stackpage = (faultaddress - stackbase) / PAGE_SIZE;
+		DEBUG(DB_EXEC, "stackpage: %d\n", stackpage);
+		paddr = as->as_stackpbase[stackpage];
 	}
 	else {
 		return EFAULT;
@@ -417,24 +431,25 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	(void)writeable;
 	(void)executable;
 
-	kprintf("codebase malloc\n");
+	DEBUG(DB_EXEC, "codebase malloc\n");
 	if (as->as_vcodebase == 0) {
+		// kprintf("vcodebase: %x, codepages: %x\n", vaddr, npages);
 		as->as_vcodebase = vaddr;
 		as->as_codepages = npages;
 		as->as_pcodebase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
-	kprintf("code malloc done\n");
+	DEBUG(DB_EXEC, "code malloc done\n");
 
-	kprintf("database malloc\n");
+	DEBUG(DB_EXEC, "database malloc\n");
 	if (as->as_vdatabase == 0) {
-		kprintf("--- database malloc ---\n");
+		DEBUG(DB_EXEC, "vdatabase: %x, datapages: %x\n", vaddr, npages);
 		as->as_vdatabase = vaddr;
 		as->as_datapages = npages;
 		as->as_pdatabase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
-	kprintf("data malloc done\n");
+	DEBUG(DB_EXEC, "data malloc done\n");
 
 	/*
 	 * Support for more than two regions is not available.
@@ -463,19 +478,13 @@ as_prepare_load(struct addrspace *as)
 		as_zero_region(as->as_pcodebase[i], 1);
 	}
 
-	kprintf("--- stackpbase malloc ---\n");
 	as->as_stackpbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
 	if (as->as_stackpbase == NULL) {
 		kprintf("stackpbase malloc out of memory\n");
 	}
 
 	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
-		paddr_t paddr = getppages(1);
-		if (paddr == 0) {
-			kprintf("getppages error\n");
-		}
-		kprintf("stack address: %x\n", as->as_stackpbase[i]);
-		as->as_stackpbase[i] = paddr;
+		as->as_stackpbase[i] = getppages(1);
 		as_zero_region(as->as_stackpbase[i], 1);
 	}
 

@@ -292,14 +292,14 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 				      ph.p_memsz, ph.p_filesz,
 				      ph.p_flags & PF_X);
 		if (result) {
-			kprintf("load_segment failed\n");
+			// kprintf("load_segment failed\n");
 			return result;
 		}
 	}
 
 	result = as_complete_load(as);
 	if (result) {
-		kprintf("as_complete_load failed\n");
+		// kprintf("as_complete_load failed\n");
 		return result;
 	}
 

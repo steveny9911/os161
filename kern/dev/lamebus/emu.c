@@ -286,13 +286,13 @@ emu_doread(struct emu_softc *sc, uint32_t handle, uint32_t len,
 	emu_wreg(sc, REG_OPER, op);
 	result = emu_waitdone(sc);
 	if (result) {
-		kprintf("doread failed\n");
+		DEBUG(DB_EXEC, "doread failed\n");
 		goto out;
 	}
 
 	membar_load_load();
 	result = uiomove(sc->e_iobuf, emu_rreg(sc, REG_IOLEN), uio);
-	kprintf("uiomove result: %d\n", result);
+	DEBUG(DB_EXEC, "uiomove result: %d\n", result);
 
 	uio->uio_offset = emu_rreg(sc, REG_OFFSET);
 
