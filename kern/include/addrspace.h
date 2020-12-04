@@ -56,7 +56,7 @@ struct addrspace {
         vaddr_t as_vdatabase;
         paddr_t as_pdatabase;
         size_t as_datapages;
-        paddr_t as_stackpbase;
+        paddr_t as_stackbase;
 #else
         /* Put stuff here for your VM system */
         vaddr_t as_vcodebase;
@@ -66,8 +66,12 @@ struct addrspace {
         vaddr_t as_vdatabase;
         paddr_t *as_pdatabase;
         size_t as_datapages;
+
+        vaddr_t as_heapbase;
+        vaddr_t as_heaptop;
         
-        paddr_t *as_stackpbase;
+        paddr_t *as_stackbase;
+
         bool elf_loaded;
 #endif
 };

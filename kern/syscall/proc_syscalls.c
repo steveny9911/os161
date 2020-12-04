@@ -43,6 +43,9 @@
 #include <copyinout.h>
 #include <pid.h>
 #include <syscall.h>
+#include <addrspace.h>
+
+#define DUMBVM_STACKPAGES    18
 
 /* note that sys_execv is in runprogram.c */
 
@@ -156,4 +159,39 @@ sys_waitpid(pid_t pid, userptr_t retstatus, int flags, pid_t *retval)
 		result = copyout(&status, retstatus, sizeof(int));
 	}
 	return result;
+}
+
+int
+sys_sbrk(intptr_t amount, int* retval) 
+{
+	kprintf("enter sbrk\namount: %lu\n", amount);
+
+	struct addrspace *as = proc_getas();
+	vaddr_t heapbreak = as->as_heaptop;
+	kprintf("heapbreak: %x\n", heapbreak);
+
+	if (amount % PAGE_SIZE != 0) {
+		kprintf("amount is not aligned\n");
+		*retval = (int)((void *)-1);
+		return EINVAL;
+	}
+
+	if (amount < 0) {
+		if (heapbreak + amount < as->as_heapbase) {
+			kprintf("heaptop hits heapbase\n");
+			*retval = (int)((void *)-1);
+			return EINVAL;
+		}
+	} 
+
+	if (as->as_heaptop + amount >= PADDR_TO_KVADDR(as->as_stackbase[DUMBVM_STACKPAGES - 1])) {
+		kprintf("heaptop hits stackbase\n");
+		*retval = (int)((void *)-1);
+		return ENOMEM;
+	}
+
+	as->as_heaptop += amount;
+	kprintf("new heaptop: %x\n", as->as_heaptop);
+	*retval = (int)heapbreak;
+	return 0;
 }

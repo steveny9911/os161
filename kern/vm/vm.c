@@ -183,16 +183,24 @@ void
 free_kpages(vaddr_t addr)
 {
 	int npages;
+	// struct addrspace *as = proc_getas();
+	// (void) as;
 
 	spinlock_acquire(&cm_spinlock);
 	for (int i = 0; i < NUM_PAGES; i++) {
 		if (coremap[i].cm_paddr == KVADDR_TO_PADDR(addr)) {
 			npages = coremap[i].cm_npages;
-
+			// kprintf("npages: %d\n", npages);
+			// KASSERT(as->as_heaptop != (vaddr_t) NULL);
 			for (int j = i; j < i + npages; j++) {
+				kprintf("===free page %d===\n", j);
+				kprintf("coremap[%d]: %d\n", j, coremap[j].cm_npages);
 				coremap[j].cm_flag = FREE;
 				coremap[j].cm_npages = 0;
 			}
+			// kprintf("heaptop before free: %x\n", as->as_heaptop);
+			// as->as_heaptop -= npages * PAGE_SIZE;
+			// kprintf("heaptop after free: %x\n", as->as_heaptop);
 		}
 	}
 	spinlock_release(&cm_spinlock);
@@ -216,7 +224,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
 	DEBUG(DB_EXEC, "===enter vm_fault===\n");
 
-	vaddr_t codebase, codetop, database, datatop, stackbase, stacktop;
+	vaddr_t codebase, codetop, database, datatop, heapbase, heaptop, stackbase, stacktop;
 	paddr_t paddr;
 	int i;
 	uint32_t ehi, elo;
@@ -267,8 +275,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	KASSERT(as->as_vdatabase != 0);
 	KASSERT(as->as_pdatabase != NULL);
 	KASSERT(as->as_datapages != 0);
+
+	KASSERT(as->as_heapbase != 0);
+	KASSERT(as->as_heaptop != 0);
 	
-	KASSERT(as->as_stackpbase != NULL);
+	KASSERT(as->as_stackbase != NULL);
 	
 	KASSERT((as->as_vcodebase & PAGE_FRAME) == as->as_vcodebase);
 	
@@ -280,6 +291,9 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	database = as->as_vdatabase;
 	datatop = database + as->as_datapages * PAGE_SIZE;
 
+	heapbase = as->as_heapbase;
+	heaptop = as->as_heaptop;
+
 	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
 
@@ -287,23 +301,47 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	bool elf_loaded = as->elf_loaded;
 
 	if (faultaddress >= codebase && faultaddress < codetop) {
-		DEBUG(DB_EXEC, "===fault at codebase===\n");
+		DEBUG(DB_EXEC, "===fault at code===\n");
 		int pcodepage = (faultaddress - codebase) / PAGE_SIZE;
 		DEBUG(DB_EXEC, "pcodepage: %d\n", pcodepage);
 		paddr = as->as_pcodebase[pcodepage];
 		codesegment = true;
 	}
 	else if (faultaddress >= database && faultaddress < datatop) {
-		DEBUG(DB_EXEC, "===fault at database===\n");
+		DEBUG(DB_EXEC, "===fault at data===\n");
 		int pdatapage = (faultaddress - database) / PAGE_SIZE;
 		DEBUG(DB_EXEC, "pdatapage: %d\n", pdatapage);
 		paddr = as->as_pdatabase[pdatapage];
 	}
+	else if (faultaddress >= heapbase && faultaddress < heaptop) {
+		bool found = false;
+		kprintf("===fault at heap===\n");
+		kprintf("faultaddress: %x\n", faultaddress);
+		for (int i = 0; i < NUM_PAGES; i++) {
+			if ((coremap[i].cm_vaddr == faultaddress) && (coremap[i].cm_flag & DIRTY)) {
+				kprintf("===heap page found===\n");
+				paddr = coremap[i].cm_paddr;
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			kprintf("===heap page not found===\n");
+			paddr = getppages(1);
+			for (int i = 0; i < NUM_PAGES; i++) {
+				if (coremap[i].cm_paddr == paddr) {
+					kprintf("===new heap page found===\n");
+					coremap[i].cm_vaddr = faultaddress;
+				}
+			}
+			as->as_heaptop = faultaddress;
+		}
+	}
 	else if (faultaddress >= stackbase && faultaddress < stacktop) {
-		DEBUG(DB_EXEC, "===fault at stackbase===\n");
+		DEBUG(DB_EXEC, "===fault at stack===\n");
 		int stackpage = (faultaddress - stackbase) / PAGE_SIZE;
 		DEBUG(DB_EXEC, "stackpage: %d\n", stackpage);
-		paddr = as->as_stackpbase[stackpage];
+		paddr = as->as_stackbase[stackpage];
 	}
 	else {
 		return EFAULT;
@@ -359,7 +397,10 @@ as_create(void)
 	as->as_pdatabase = NULL;
 	as->as_datapages = 0;
 	
-	as->as_stackpbase = NULL;
+	as->as_stackbase = NULL;
+
+	as->as_heapbase = 0;
+	as->as_heaptop = 0;
 
 	as->elf_loaded = false;
 
@@ -378,7 +419,7 @@ as_destroy(struct addrspace *as)
 	}
 
 	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
-		free_kpages(PADDR_TO_KVADDR(as->as_stackpbase[i]));
+		free_kpages(PADDR_TO_KVADDR(as->as_stackbase[i]));
 	}
 
 	kfree(as);
@@ -478,15 +519,24 @@ as_prepare_load(struct addrspace *as)
 		as_zero_region(as->as_pcodebase[i], 1);
 	}
 
-	as->as_stackpbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
-	if (as->as_stackpbase == NULL) {
+	as->as_heapbase = as->as_vdatabase + (as->as_datapages + 1) * PAGE_SIZE;
+	as->as_heaptop = as->as_heapbase;
+	for (int i = 0; i < NUM_PAGES; i++) {
+		if (coremap[i].cm_flag == FREE) {
+			coremap[i].cm_vaddr = as->as_heapbase;
+			break;
+		}
+	}
+	kprintf("as_heapbase: %x\n", as->as_heapbase);
+
+	as->as_stackbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
+	if (as->as_stackbase == NULL) {
 		kprintf("stackpbase malloc out of memory\n");
 		return ENOMEM;
 	}
-
 	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
-		as->as_stackpbase[i] = getppages(1);
-		as_zero_region(as->as_stackpbase[i], 1);
+		as->as_stackbase[i] = getppages(1);
+		as_zero_region(as->as_stackbase[i], 1);
 	}
 
 	return 0;
@@ -502,7 +552,7 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	KASSERT(as->as_stackpbase != 0);
+	KASSERT(as->as_stackbase != 0);
 
 	*stackptr = USERSTACK;
 	return 0;
@@ -524,9 +574,12 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	new->as_vdatabase = old->as_vdatabase;
 	new->as_datapages = old->as_datapages;
 
+	new->as_heapbase = old->as_heapbase;
+	new->as_heaptop = old->as_heaptop;
+
 	new->as_pcodebase = kmalloc(sizeof(paddr_t) * old->as_codepages);
 	new->as_pdatabase = kmalloc(sizeof(paddr_t) * old->as_datapages);
-	new->as_stackpbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
+	new->as_stackbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
 
 	/* (Mis)use as_prepare_load to allocate some physical memory. */
 	if (as_prepare_load(new)) {
@@ -536,7 +589,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 	KASSERT(new->as_pcodebase != NULL);
 	KASSERT(new->as_pdatabase != NULL);
-	KASSERT(new->as_stackpbase != NULL);
+	KASSERT(new->as_stackbase != NULL);
 
 	for (size_t i = 0; i < new->as_codepages; i++) {
 		memmove((void *)PADDR_TO_KVADDR(new->as_pcodebase[i]),
@@ -551,8 +604,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	}
 
 	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
-		memmove((void *)PADDR_TO_KVADDR(new->as_stackpbase[i]),
-				(const void *)PADDR_TO_KVADDR(old->as_stackpbase[i]),
+		memmove((void *)PADDR_TO_KVADDR(new->as_stackbase[i]),
+				(const void *)PADDR_TO_KVADDR(old->as_stackbase[i]),
 				PAGE_SIZE);
 	}
 
