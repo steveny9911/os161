@@ -265,39 +265,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 					break;
 				}
 			}
-			// if (i == NUM_PAGES) {
-			// 	char path[] = "lhd0raw";
-			// 	struct vnode *vn;
-			// 	struct stat stat;
-			// 	struct iovec iov;
-			// 	struct uio uio;
-			// 	int entry = 0;
-			// 	size_t entrylen = sizeof(struct cm_entry);
 
-			// 	result = vfs_open(path, O_RDWR, 0, &vn);
-			// 	if (result) {
-			// 		return result;
-			// 	}
-			
-			// 	VOP_STAT(vn, &stat);
-			// 	off_t size = stat.st_size;
-			// 	int pos;
-			// 	for (pos = 0 ; pos < size; pos += entrylen) {
-			// 		uio_kinit(&iov, &uio, &entry, entrylen, pos, UIO_READ); 
-			// 		VOP_READ(vn, &uio);
-
-			// 		pid_t pid = entry & CM_PID;
-			// 		vaddr_t vaddr = (entry << 2) & CM_VADDR;
-			// 		if (pid == curproc->p_pid && vaddr == faultaddress) {
-			// 			paddr = (entry << 22) & CM_PADDR;
-						
-			// 			break;
-			// 		}
-			// 	}
-			// 	if (pos == size) {
-			// 		paddr = getppages(1);
-			// 	}
-			// }
 			break;
 		}
 
