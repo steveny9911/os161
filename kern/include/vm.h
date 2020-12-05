@@ -44,16 +44,29 @@
 #define VM_FAULT_READ        0    /* A read was attempted */
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
+
+//   xx      ...       ...      xx      xxx      
+//  pid     vaddr     paddr    flag    npages   
+
+#define CM_PID   0x3
+#define CM_VADDR  0xfffff
+#define CM_PADDR   0xfffff
+
+/**
+ * Coremap entry
+ * Using bit-field to store variables
+ */
 struct cm_entry {
-    paddr_t cm_paddr;
+    pid_t cm_pid:2;
+
     vaddr_t cm_vaddr;
-    // FREE, FIXED, CLEAN, DIRTY
-    // 0     1      2      3
-    int cm_flag:2;
-    size_t cm_npages:3;  // how many pages are contiguous?
+    paddr_t cm_paddr;
+
+    int cm_flag:2;          // FREE 0, FIXED 1, CLEAN 2, DIRTY 3
+    size_t cm_npages:3;
 };
 
-struct cm_entry *coremap;
+struct cm_entry *coremap;   // coremap array
 
 /* Initialization function */
 void vm_bootstrap(void);

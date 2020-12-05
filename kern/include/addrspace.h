@@ -58,9 +58,9 @@ struct addrspace {
         size_t as_datapages;
         paddr_t as_stackbase;
 #else
-        /* Put stuff here for your VM system */
+        /* our VM system */
         vaddr_t as_vcodebase;
-        paddr_t *as_pcodebase;
+        paddr_t *as_pcodebase;   // code segment page table array
         size_t as_codepages;
 
         vaddr_t as_vdatabase;
@@ -72,7 +72,7 @@ struct addrspace {
         
         paddr_t *as_stackbase;
 
-        bool elf_loaded;
+        bool elf_loaded;        // indicate whether ELF is loaded or not
 #endif
 };
 

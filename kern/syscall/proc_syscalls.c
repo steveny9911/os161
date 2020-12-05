@@ -45,7 +45,7 @@
 #include <syscall.h>
 #include <addrspace.h>
 
-#define DUMBVM_STACKPAGES    18
+#define VM_STACKPAGES    18
 
 /* note that sys_execv is in runprogram.c */
 
@@ -164,34 +164,48 @@ sys_waitpid(pid_t pid, userptr_t retstatus, int flags, pid_t *retval)
 int
 sys_sbrk(intptr_t amount, int* retval) 
 {
-	kprintf("enter sbrk\namount: %lu\n", amount);
-
 	struct addrspace *as = proc_getas();
 	vaddr_t heapbreak = as->as_heaptop;
-	kprintf("heapbreak: %x\n", heapbreak);
-
+	
+	// check for alignment
 	if (amount % PAGE_SIZE != 0) {
-		kprintf("amount is not aligned\n");
+		DEBUG(DB_EXEC, "amount is not aligned\n");
 		*retval = (int)((void *)-1);
 		return EINVAL;
 	}
 
+	// if sbrk(0), return the heaptop
+	if (amount == 0) {
+		*retval = (int)heapbreak;
+		return 0;
+	}
+
+	// when amount less than zero
+	// if sum less than heapbase, then negative memory access which is not allow
+	// else, decrease heaptop
+	//
 	if (amount < 0) {
 		if (heapbreak + amount < as->as_heapbase) {
-			kprintf("heaptop hits heapbase\n");
+			DEBUG(DB_EXEC, "heaptop hits heapbase\n");
 			*retval = (int)((void *)-1);
 			return EINVAL;
+		} else {
+			as->as_heaptop += amount;
+			*retval = (int)heapbreak;
+			return 0;
 		}
 	} 
 
-	if (as->as_heaptop + amount >= PADDR_TO_KVADDR(as->as_stackbase[DUMBVM_STACKPAGES - 1])) {
-		kprintf("heaptop hits stackbase\n");
+	// final check if added sum exceeds to stack segment, not allowed
+	// else increase the heaptop, return original new heaptop
+	//
+	if (as->as_heaptop + amount >= PADDR_TO_KVADDR(as->as_stackbase[VM_STACKPAGES - 1])) {
+		DEBUG(DB_EXEC, "heaptop hits stackbase\n");
 		*retval = (int)((void *)-1);
 		return ENOMEM;
 	}
 
 	as->as_heaptop += amount;
-	kprintf("new heaptop: %x\n", as->as_heaptop);
 	*retval = (int)heapbreak;
 	return 0;
 }

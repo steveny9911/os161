@@ -37,6 +37,11 @@
 #include <mips/tlb.h>
 #include <vm.h>
 #include <addrspace.h>
+#include <vfs.h>
+#include <uio.h>
+#include <vnode.h>
+#include <stat.h>
+#include <kern/fcntl.h>
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -54,9 +59,8 @@
  * it's cutting (there are many) and why, and more importantly, how.
  */
 
-/* under dumbvm, always have 72k of user stack */
-/* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
-#define DUMBVM_STACKPAGES    18
+// using a fixed size stack page for now
+#define VM_STACKPAGES    18
 
 static bool BOOT = false;
 static int NUM_PAGES;
@@ -67,30 +71,39 @@ static int NUM_PAGES;
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
 /**
- * Core map
+ * Coremap entry flags
  */
-#define FREE 0
-#define FIXED 1
-#define CLEAN 2
-#define DIRTY 3
+#define FREE 0    // free to use (unallocated)
+#define FIXED 1   // fixed for coremap use; unable to use forever
+#define CLEAN 2   // clean for swapping
+#define DIRTY 3   // dirty when in-use (allocated)
 
+/**
+ * Global coremap array
+ * Lock for coremap
+ */
 struct cm_entry *coremap;
 static struct spinlock cm_spinlock = SPINLOCK_INITIALIZER;
+
+#define CM_PID   0x3
+#define CM_VADDR  0xfffff
+#define CM_PADDR   0xfffff
 
 void
 vm_bootstrap(void)
 {
-	// get last physical address of free memory
-	paddr_t lastaddr = ram_getsize();
+	paddr_t lastaddr = ram_getsize();                           // get last physical address of free memory
+	paddr_t firstaddr = ram_getfirstfree();                     // get first physical address of free memory
 
-	// get first physical address of free memory
-	paddr_t firstaddr = ram_getfirstfree();
-	
-	// calculate NUM_PAGES (we are given PAGE_SIZE)
-	NUM_PAGES = (lastaddr - firstaddr) / PAGE_SIZE;
+	NUM_PAGES = (lastaddr - firstaddr) / PAGE_SIZE;             // calculate NUM_PAGES (we are given PAGE_SIZE)
 
-	// allocate space to store coremap (but! coremap should not be mapped as available memory)
-	coremap = (struct cm_entry*)PADDR_TO_KVADDR(firstaddr);
+	coremap = (struct cm_entry*)PADDR_TO_KVADDR(firstaddr);     // allocate space to store coremap
+
+	/*
+	 *      | FIXED     | FREE             |
+	 *      ^           ^                  ^
+	 *  firstaddr    freeaddr            lastaddr
+	 */
 
 	// get size of coremap we made --- subtract that from actual virtual memory --- coremap should not be mapped as available memory
 	paddr_t freeaddr = firstaddr + ROUNDUP(NUM_PAGES * sizeof(struct cm_entry), PAGE_SIZE);
@@ -98,24 +111,24 @@ vm_bootstrap(void)
 	DEBUG(DB_EXEC, "firstaddr: %x\t freeaddr: %x\t lastaddr: %x\n", firstaddr, freeaddr, lastaddr);
 	DEBUG(DB_EXEC, "NUM_PAGES: %d\n\n", NUM_PAGES);
 
-	//     | FIXED     | FREE             |
-	//     ^           ^                  ^
-	// firstaddr    freeaddr            lastaddr
-
 	// initialize each coremap entry
 	for (int i = 0; i < NUM_PAGES; i++) {
-		coremap[i].cm_paddr = freeaddr + (unsigned long) i * PAGE_SIZE;
+		coremap[i].cm_pid = curproc->p_pid;
 		coremap[i].cm_vaddr = 0x0;
-		coremap[i].cm_npages = 0;
+		coremap[i].cm_paddr = freeaddr + (unsigned long) i * PAGE_SIZE;    // consistent, evenly spaced, physical page address 
 
+		// set pages used by coremap as FIXED
+		// set other pages to FREE as unallocated
+		//
 		if (i < (int)(freeaddr - firstaddr) / PAGE_SIZE) {
 			coremap[i].cm_flag = FIXED;
 		} else {
 			coremap[i].cm_flag = FREE;
 		}
+		coremap[i].cm_npages = 0;
 	}
 
-	// need a flag to indicate that vm has already bootstrapped
+	// flag to indicate that vm is ready
 	BOOT = true;
 }
 
@@ -124,6 +137,10 @@ paddr_t
 getppages(unsigned long npages)
 {
 	paddr_t addr;
+
+	// when vm has yet been bootstrapped
+	// allocate physical memory for kernel
+	//
 	if (!BOOT) {
 		spinlock_acquire(&stealmem_lock);
 		addr = ram_stealmem(npages);
@@ -136,6 +153,10 @@ getppages(unsigned long npages)
 
 	spinlock_acquire(&cm_spinlock);
 
+	// loop through the coremap
+	// while finding the first FREE entry
+	// count "nfree" so there are "npages" of contiguous FREE entry
+	//
 	for (int i = 0; i < NUM_PAGES && nfree != (int)npages; i++) {
 		if (coremap[i].cm_flag == FREE) {
 			if (firstpage == -1) {
@@ -155,6 +176,7 @@ getppages(unsigned long npages)
 		return 0;
 	}
 
+	// set these entries to DIRTY (allocated)
 	for (int j = firstpage; j < firstpage + (int)npages; j++) {
 		coremap[j].cm_flag = DIRTY;
 		coremap[j].cm_npages = (int)npages;
@@ -165,7 +187,7 @@ getppages(unsigned long npages)
 	return addr;
 }
 
-/* Allocate/free some kernel-space virtual pages */
+// Allocate/free some kernel-space virtual pages
 vaddr_t
 alloc_kpages(unsigned npages)
 {
@@ -183,24 +205,20 @@ void
 free_kpages(vaddr_t addr)
 {
 	int npages;
-	// struct addrspace *as = proc_getas();
-	// (void) as;
 
 	spinlock_acquire(&cm_spinlock);
+	
+	// loop through the coremap entry
+	// find the matching entry with the same physical address
+	// set the following contiguous entries to FREE
+	//
 	for (int i = 0; i < NUM_PAGES; i++) {
 		if (coremap[i].cm_paddr == KVADDR_TO_PADDR(addr)) {
 			npages = coremap[i].cm_npages;
-			// kprintf("npages: %d\n", npages);
-			// KASSERT(as->as_heaptop != (vaddr_t) NULL);
 			for (int j = i; j < i + npages; j++) {
-				kprintf("===free page %d===\n", j);
-				kprintf("coremap[%d]: %d\n", j, coremap[j].cm_npages);
 				coremap[j].cm_flag = FREE;
 				coremap[j].cm_npages = 0;
 			}
-			// kprintf("heaptop before free: %x\n", as->as_heaptop);
-			// as->as_heaptop -= npages * PAGE_SIZE;
-			// kprintf("heaptop after free: %x\n", as->as_heaptop);
 		}
 	}
 	spinlock_release(&cm_spinlock);
@@ -234,15 +252,55 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	faultaddress &= PAGE_FRAME;
 
 	DEBUG(DB_EXEC, "fault: 0x%x\n", faultaddress);
-
 	DEBUG(DB_EXEC, "faulttype: %d\n", faulttype);
+
 	switch (faulttype) {
-		// kprintf("enter faulttype switch\n");
-		case VM_FAULT_READONLY:
-			// /* We always create pages read-write, so we can't get this */
-			// panic("dumbvm: got VM_FAULT_READONLY\n");
+		case VM_FAULT_READONLY:    // text segment should be read-only
 			return EFAULT;
-		case VM_FAULT_READ:
+
+		case VM_FAULT_READ: {
+			int i;
+			for (i = 0 ; i < NUM_PAGES; i++) {
+				if (coremap[i].cm_vaddr == faultaddress) {
+					break;
+				}
+			}
+			// if (i == NUM_PAGES) {
+			// 	char path[] = "lhd0raw";
+			// 	struct vnode *vn;
+			// 	struct stat stat;
+			// 	struct iovec iov;
+			// 	struct uio uio;
+			// 	int entry = 0;
+			// 	size_t entrylen = sizeof(struct cm_entry);
+
+			// 	result = vfs_open(path, O_RDWR, 0, &vn);
+			// 	if (result) {
+			// 		return result;
+			// 	}
+			
+			// 	VOP_STAT(vn, &stat);
+			// 	off_t size = stat.st_size;
+			// 	int pos;
+			// 	for (pos = 0 ; pos < size; pos += entrylen) {
+			// 		uio_kinit(&iov, &uio, &entry, entrylen, pos, UIO_READ); 
+			// 		VOP_READ(vn, &uio);
+
+			// 		pid_t pid = entry & CM_PID;
+			// 		vaddr_t vaddr = (entry << 2) & CM_VADDR;
+			// 		if (pid == curproc->p_pid && vaddr == faultaddress) {
+			// 			paddr = (entry << 22) & CM_PADDR;
+						
+			// 			break;
+			// 		}
+			// 	}
+			// 	if (pos == size) {
+			// 		paddr = getppages(1);
+			// 	}
+			// }
+			break;
+		}
+
 		case VM_FAULT_WRITE:
 			break;
 		default:
@@ -294,63 +352,61 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	heapbase = as->as_heapbase;
 	heaptop = as->as_heaptop;
 
-	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
+	stackbase = USERSTACK - VM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
 
-	bool codesegment = false;
-	bool elf_loaded = as->elf_loaded;
+	bool codesegment = false;               // indicate whether it is text-segment
+	bool elf_loaded = as->elf_loaded;       // has ELF loaded yet
 
+	// since we know page size
+	// and they are evenly spaced
+	// we can find the page number and look up in our coremap
+	//
 	if (faultaddress >= codebase && faultaddress < codetop) {
-		DEBUG(DB_EXEC, "===fault at code===\n");
 		int pcodepage = (faultaddress - codebase) / PAGE_SIZE;
-		DEBUG(DB_EXEC, "pcodepage: %d\n", pcodepage);
 		paddr = as->as_pcodebase[pcodepage];
 		codesegment = true;
 	}
 	else if (faultaddress >= database && faultaddress < datatop) {
-		DEBUG(DB_EXEC, "===fault at data===\n");
 		int pdatapage = (faultaddress - database) / PAGE_SIZE;
-		DEBUG(DB_EXEC, "pdatapage: %d\n", pdatapage);
 		paddr = as->as_pdatabase[pdatapage];
 	}
 	else if (faultaddress >= heapbase && faultaddress < heaptop) {
+		
+		// for heap segment
+		// locate the fault address inside the coremap
+		// if found, return the physical address
+		// else, allocate a new physical address
+		//
 		bool found = false;
-		kprintf("===fault at heap===\n");
-		kprintf("faultaddress: %x\n", faultaddress);
 		for (int i = 0; i < NUM_PAGES; i++) {
-			if ((coremap[i].cm_vaddr == faultaddress) && (coremap[i].cm_flag & DIRTY)) {
-				kprintf("===heap page found===\n");
+			if ((coremap[i].cm_vaddr == faultaddress)) {
 				paddr = coremap[i].cm_paddr;
 				found = true;
 				break;
 			}
 		}
 		if (!found) {
-			kprintf("===heap page not found===\n");
 			paddr = getppages(1);
 			for (int i = 0; i < NUM_PAGES; i++) {
-				if (coremap[i].cm_paddr == paddr) {
-					kprintf("===new heap page found===\n");
+				if (coremap[i].cm_paddr == paddr) {;
 					coremap[i].cm_vaddr = faultaddress;
 				}
 			}
-			as->as_heaptop = faultaddress;
 		}
 	}
 	else if (faultaddress >= stackbase && faultaddress < stacktop) {
-		DEBUG(DB_EXEC, "===fault at stack===\n");
 		int stackpage = (faultaddress - stackbase) / PAGE_SIZE;
-		DEBUG(DB_EXEC, "stackpage: %d\n", stackpage);
 		paddr = as->as_stackbase[stackpage];
 	}
 	else {
 		return EFAULT;
 	}
 
-	/* make sure it's page-aligned */
+	// make sure it's page-aligned
 	KASSERT((paddr & PAGE_FRAME) == paddr);
 
-	/* Disable interrupts on this CPU while frobbing the TLB. */
+	// Disable interrupts on this CPU while frobbing the TLB
 	spl = splhigh();
 
 	for (i=0; i<NUM_TLB; i++) {
@@ -358,6 +414,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		if (elo & TLBLO_VALID) {
 			continue;
 		}
+
 		ehi = faultaddress;
 		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
 		if (codesegment && elf_loaded) {
@@ -410,6 +467,10 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+	// simple free the memory for each page table array
+	// covert from phsical address to virtual address
+	// for freeing on coremap
+	//
 	for (size_t i = 0; i < as->as_codepages; i++) {
 		free_kpages(PADDR_TO_KVADDR(as->as_pcodebase[i]));
 	}
@@ -418,7 +479,7 @@ as_destroy(struct addrspace *as)
 		free_kpages(PADDR_TO_KVADDR(as->as_pdatabase[i]));
 	}
 
-	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
+	for (size_t i = 0; i < VM_STACKPAGES; i++) {
 		free_kpages(PADDR_TO_KVADDR(as->as_stackbase[i]));
 	}
 
@@ -436,7 +497,7 @@ as_activate(void)
 		return;
 	}
 
-	/* Disable interrupts on this CPU while frobbing the TLB. */
+	// Disable interrupts on this CPU while frobbing the TLB
 	spl = splhigh();
 
 	for (i=0; i<NUM_TLB; i++) {
@@ -449,7 +510,7 @@ as_activate(void)
 void
 as_deactivate(void)
 {
-	/* nothing */
+	// nothing
 }
 
 int
@@ -458,21 +519,24 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 {
 	size_t npages;
 
-	/* Align the region. First, the base... */
+	// Align the region. First, the base
 	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
 	vaddr &= PAGE_FRAME;
 
-	/* ...and now the length. */
+	// ...and now the length
 	sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
 
 	npages = sz / PAGE_SIZE;
 
-	/* We don't use these - all pages are read-write */
 	(void)readable;
 	(void)writeable;
 	(void)executable;
 
-	DEBUG(DB_EXEC, "codebase malloc\n");
+	// define two regions called by ELF
+	// initialize with virtual address for text and data segment
+	// number of pages needed for each segment
+	// page table array for each segment
+	//
 	if (as->as_vcodebase == 0) {
 		DEBUG(DB_VM, "vcodebase: %x, codepages: %x\n", vaddr, npages);
 		as->as_vcodebase = vaddr;
@@ -480,9 +544,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		as->as_pcodebase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
-	DEBUG(DB_EXEC, "code malloc done\n");
 
-	DEBUG(DB_EXEC, "database malloc\n");
 	if (as->as_vdatabase == 0) {
 		DEBUG(DB_EXEC, "vdatabase: %x, datapages: %x\n", vaddr, npages);
 		as->as_vdatabase = vaddr;
@@ -490,12 +552,11 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		as->as_pdatabase = kmalloc(sizeof(paddr_t) * npages);
 		return 0;
 	}
-	DEBUG(DB_EXEC, "data malloc done\n");
 
 	/*
 	 * Support for more than two regions is not available.
 	 */
-	kprintf("dumbvm: Warning: too many regions\n");
+	kprintf("Warning: too many regions\n");
 	return ENOSYS;
 }
 
@@ -509,6 +570,14 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
+	// super simple page table array that has
+	// index as page number
+	// value as physical address
+	//
+	// setup text, data, stack page table array
+	// assign a physical address
+	// then zero that address region
+	//
 	for (size_t i = 0; i < as->as_codepages; i++) {
 		as->as_pcodebase[i] = getppages(1);
 		as_zero_region(as->as_pcodebase[i], 1);
@@ -519,6 +588,10 @@ as_prepare_load(struct addrspace *as)
 		as_zero_region(as->as_pcodebase[i], 1);
 	}
 
+	// region after text and data segment is for heap
+	// stack is fixed size of VM_STACKPAGES for now
+	// so we can mark the in-between region for heap
+	//
 	as->as_heapbase = as->as_vdatabase + (as->as_datapages + 1) * PAGE_SIZE;
 	as->as_heaptop = as->as_heapbase;
 	for (int i = 0; i < NUM_PAGES; i++) {
@@ -527,14 +600,12 @@ as_prepare_load(struct addrspace *as)
 			break;
 		}
 	}
-	kprintf("as_heapbase: %x\n", as->as_heapbase);
 
-	as->as_stackbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
+	as->as_stackbase = kmalloc(sizeof(paddr_t) * VM_STACKPAGES);
 	if (as->as_stackbase == NULL) {
-		kprintf("stackpbase malloc out of memory\n");
 		return ENOMEM;
 	}
-	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
+	for (size_t i = 0; i < VM_STACKPAGES; i++) {
 		as->as_stackbase[i] = getppages(1);
 		as_zero_region(as->as_stackbase[i], 1);
 	}
@@ -579,9 +650,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 	new->as_pcodebase = kmalloc(sizeof(paddr_t) * old->as_codepages);
 	new->as_pdatabase = kmalloc(sizeof(paddr_t) * old->as_datapages);
-	new->as_stackbase = kmalloc(sizeof(paddr_t) * DUMBVM_STACKPAGES);
+	new->as_stackbase = kmalloc(sizeof(paddr_t) * VM_STACKPAGES);
 
-	/* (Mis)use as_prepare_load to allocate some physical memory. */
+	// (Mis)use as_prepare_load to allocate some physical memory
 	if (as_prepare_load(new)) {
 		as_destroy(new);
 		return ENOMEM;
@@ -591,6 +662,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	KASSERT(new->as_pdatabase != NULL);
 	KASSERT(new->as_stackbase != NULL);
 
+	// copy each page into the new area in memory
+	// each page has a fixed size of PAGE_SIZE
+	//
 	for (size_t i = 0; i < new->as_codepages; i++) {
 		memmove((void *)PADDR_TO_KVADDR(new->as_pcodebase[i]),
 				(const void *)PADDR_TO_KVADDR(old->as_pcodebase[i]),
@@ -603,7 +677,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				PAGE_SIZE);
 	}
 
-	for (size_t i = 0; i < DUMBVM_STACKPAGES; i++) {
+	for (size_t i = 0; i < VM_STACKPAGES; i++) {
 		memmove((void *)PADDR_TO_KVADDR(new->as_stackbase[i]),
 				(const void *)PADDR_TO_KVADDR(old->as_stackbase[i]),
 				PAGE_SIZE);
