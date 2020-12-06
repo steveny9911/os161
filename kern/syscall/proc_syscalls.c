@@ -199,8 +199,8 @@ sys_sbrk(intptr_t amount, int* retval)
 	// final check if added sum exceeds to stack segment, not allowed
 	// else increase the heaptop, return original new heaptop
 	//
-	if (as->as_heaptop + amount >= PADDR_TO_KVADDR(as->as_stackbase[VM_STACKPAGES - 1])) {
-		DEBUG(DB_EXEC, "heaptop hits stackbase\n");
+	if (as->as_heaptop + amount >= PADDR_TO_KVADDR(as->as_stackbase[VM_STACKPAGES-1])) {
+		DEBUG(DB_EXEC, "heaptop hits stacktop\n");
 		*retval = (int)((void *)-1);
 		return ENOMEM;
 	}

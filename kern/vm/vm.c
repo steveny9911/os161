@@ -240,8 +240,6 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	DEBUG(DB_EXEC, "===enter vm_fault===\n");
-
 	vaddr_t codebase, codetop, database, datatop, heapbase, heaptop, stackbase, stacktop;
 	paddr_t paddr;
 	int i;
@@ -257,18 +255,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	switch (faulttype) {
 		case VM_FAULT_READONLY:    // text segment should be read-only
 			return EFAULT;
-
-		case VM_FAULT_READ: {
-			int i;
-			for (i = 0 ; i < NUM_PAGES; i++) {
-				if (coremap[i].cm_vaddr == faultaddress) {
-					break;
-				}
-			}
-
-			break;
-		}
-
+		case VM_FAULT_READ:
 		case VM_FAULT_WRITE:
 			break;
 		default:
@@ -357,7 +344,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		if (!found) {
 			paddr = getppages(1);
 			for (int i = 0; i < NUM_PAGES; i++) {
-				if (coremap[i].cm_paddr == paddr) {;
+				if (coremap[i].cm_paddr == paddr) {
 					coremap[i].cm_vaddr = faultaddress;
 				}
 			}
